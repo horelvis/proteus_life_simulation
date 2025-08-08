@@ -1,0 +1,15 @@
+# Minimal Dockerfile - Start simple
+FROM python:3.11
+
+WORKDIR /app
+
+# Just copy requirements and install
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the app
+COPY . .
+
+EXPOSE 8000
+
+CMD ["python", "run_server.py"]

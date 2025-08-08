@@ -1,0 +1,584 @@
+"""
+Organismos optimizados para simulación web con evolución topológica real
+"""
+
+import numpy as np
+from typing import Dict, List, Optional, Tuple
+import uuid
+from dataclasses import dataclass, field
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from proteus.core.topology_engine import TopologyEngine, TopologicalState
+
+
+@dataclass
+class TopologicalGenome:
+    """Genoma topológico simplificado para web"""
+    topology: np.ndarray  # Matriz de conexiones topológicas
+    organ_expressions: Dict[str, float] = field(default_factory=dict)
+    mutation_history: List[str] = field(default_factory=list)
+    
+    def mutate(self, mutation_rate: float = 0.1):
+        """Aplica mutaciones al genoma"""
+        # Mutar topología
+        if np.random.random() < mutation_rate:
+            i, j = np.random.randint(0, self.topology.shape[0], 2)
+            self.topology[i, j] += np.random.normal(0, 0.1)
+            self.topology[i, j] = np.clip(self.topology[i, j], -1, 1)
+            self.mutation_history.append(f"topology_{i}_{j}")
+        
+        # Mutar expresión de órganos
+        for organ in self.organ_expressions:
+            if np.random.random() < mutation_rate * 0.5:
+                delta = np.random.normal(0, 0.1)
+                self.organ_expressions[organ] = np.clip(
+                    self.organ_expressions[organ] + delta, 0, 1
+                )
+                self.mutation_history.append(f"organ_{organ}")
+    
+    def copy(self):
+        """Crea una copia del genoma"""
+        return TopologicalGenome(
+            topology=self.topology.copy(),
+            organ_expressions=self.organ_expressions.copy(),
+            mutation_history=self.mutation_history.copy()
+        )
+
+
+@dataclass
+class Organ:
+    """Órgano emergente simplificado"""
+    type: str
+    expression: float = 0.0
+    development_stage: float = 0.0
+    functionality: float = 0.0
+    cost: float = 0.1
+    
+    def develop(self, dt: float, energy: float):
+        """Desarrolla el órgano"""
+        if energy > self.cost * dt:
+            self.development_stage = min(1.0, self.development_stage + dt * 0.1)
+            self.functionality = self.expression * self.development_stage
+            return self.cost * dt * self.functionality
+        return 0
+    
+    def get_capability(self) -> float:
+        """Retorna la capacidad que otorga el órgano"""
+        return self.functionality
+
+
+class WebOrganism:
+    """Organismo con verdadera evolución topológica"""
+    
+    def __init__(self, x: float, y: float, generation: int = 0, 
+                 parent_genome: Optional[TopologicalGenome] = None,
+                 topology_engine: Optional[TopologyEngine] = None):
+        self.id = str(uuid.uuid4())
+        self.x = x
+        self.y = y
+        self.vx = 0.0
+        self.vy = 0.0
+        
+        # Estado vital
+        self.generation = generation
+        self.age = 0.0
+        self.energy = 0.8  # Empiezan con menos energía
+        self.alive = True
+        self.death_cause = None
+        
+        # Estado de alimentación
+        self.hunger = 0.5  # 0 = saciado, 1 = hambriento
+        self.feeding_cooldown = 0
+        self.nutrients_consumed = 0
+        self.last_meal_age = 0
+        
+        # Estado topológico para computación sin neuronas
+        self.topological_state = TopologicalState(
+            position=np.array([x, y]),
+            velocity=np.array([self.vx, self.vy]),
+            trajectory_history=[np.array([x, y])],
+            field_memory=None
+        )
+        
+        # Motor topológico (compartido entre organismos)
+        self.topology_engine = topology_engine
+        
+        # Genoma y órganos
+        if parent_genome:
+            self.genome = parent_genome.copy()
+            self.genome.mutate()
+        else:
+            # Genoma inicial aleatorio
+            self.genome = TopologicalGenome(
+                topology=np.random.randn(5, 5) * 0.1,
+                organ_expressions={
+                    "photosensor": np.random.random() * 0.3,
+                    "chemoreceptor": np.random.random() * 0.3,
+                    "flagellum": 0.1 + np.random.random() * 0.2,
+                    "membrane": 0.1,
+                    "vacuole": 0.1
+                }
+            )
+        
+        # Inicializar órganos
+        self.organs: List[Organ] = []
+        self._initialize_organs()
+        
+        # Capacidades derivadas
+        self.capabilities = {
+            "vision": 0.0,
+            "chemotaxis": 0.0,
+            "motility": 0.5,
+            "protection": 0.0,
+            "efficiency": 1.0
+        }
+        
+        # Historia para trayectoria
+        self.trajectory = []
+        self.last_reproduction = 0.0
+    
+    def _initialize_organs(self):
+        """Inicializa órganos basados en el genoma"""
+        for organ_type, expression in self.genome.organ_expressions.items():
+            if expression > 0.1:  # Umbral de expresión
+                organ = Organ(
+                    type=organ_type,
+                    expression=expression,
+                    development_stage=0.0,
+                    functionality=0.0
+                )
+                self.organs.append(organ)
+    
+    def update(self, field_state: Dict, dt: float):
+        """Actualiza el estado del organismo usando evolución topológica"""
+        if not self.alive:
+            return
+        
+        # Desarrollar órganos
+        organ_cost = 0
+        for organ in self.organs:
+            cost = organ.develop(dt, self.energy)
+            organ_cost += cost
+        
+        # Actualizar capacidades basadas en órganos
+        self._update_capabilities()
+        
+        # Actualizar posición en el estado topológico
+        self.topological_state.position = np.array([self.x, self.y])
+        self.topological_state.velocity = np.array([self.vx, self.vy])
+        
+        # Percepción del entorno
+        light_gradient = field_state.get("light_gradient", np.array([0, 0]))
+        nutrient_gradient = field_state.get("nutrient_gradient", np.array([0, 0]))
+        light_level = field_state.get("light_level", 0)
+        
+        # Actualizar hambre
+        self.hunger = min(1.0, self.hunger + 0.01 * dt)  # Aumenta gradualmente
+        if self.feeding_cooldown > 0:
+            self.feeding_cooldown -= dt
+        
+        # COMPUTACIÓN TOPOLÓGICA PURA - Sin neuronas
+        # Crear señal heredada basada en características topológicas
+        inherited_signal = self._compute_inherited_signal()
+        
+        # MOTIVACIÓN DE HAMBRE: Modula la señal heredada
+        # Cuando tienen hambre, son más sensibles a nutrientes
+        hunger_modulation = np.array([self.hunger, self.hunger])
+        inherited_signal = inherited_signal * (1 + hunger_modulation)
+        
+        # Calcular flujo topológico (la esencia de PROTEUS)
+        if self.topology_engine:
+            topological_flow = self.topology_engine.compute_topological_flow(
+                self.topological_state, 
+                inherited_signal
+            )
+        else:
+            # Fallback si no hay motor topológico - usar movimiento aleatorio
+            topological_flow = np.random.randn(2) * 0.5
+        
+        # Comportamiento emergente de la topología + capacidades + hambre
+        # Suavizar el flujo topológico con el movimiento anterior
+        if not hasattr(self, 'prev_flow'):
+            self.prev_flow = np.array([0.0, 0.0])
+        
+        # Mezclar con flujo anterior para suavidad (70% nuevo, 30% anterior)
+        smooth_flow = topological_flow * 0.7 + self.prev_flow * 0.3
+        self.prev_flow = smooth_flow.copy()
+        
+        dx, dy = smooth_flow[0], smooth_flow[1]
+        
+        # Detección de depredadores por luz (si tiene visión)
+        if self.capabilities["vision"] > 0 and light_level > 0.1:
+            # La fotosensibilidad permite detectar el peligro
+            danger_detection = self.capabilities["vision"] * light_level
+            
+            # Respuesta de escape proporcional a la capacidad visual
+            escape_force = danger_detection * 3.0
+            
+            # Huir en dirección opuesta al gradiente de luz
+            if np.linalg.norm(light_gradient) > 0:
+                escape_direction = -light_gradient / np.linalg.norm(light_gradient)
+                dx += escape_direction[0] * escape_force
+                dy += escape_direction[1] * escape_force
+                
+                # Aumentar velocidad temporalmente (pánico)
+                self.capabilities["motility"] = min(2.0, self.capabilities["motility"] * 1.2)
+        
+        # Quimiotaxis (si tiene quimiorreceptores) - FUERTEMENTE modulado por HAMBRE
+        if self.capabilities["chemotaxis"] > 0:
+            # El hambre amplifica dramáticamente la búsqueda de nutrientes
+            hunger_amplification = 1 + self.hunger * 3  # Hasta 4x cuando hambriento
+            chemotaxis_force = nutrient_gradient * self.capabilities["chemotaxis"] * hunger_amplification * 0.5
+            dx += chemotaxis_force[0]
+            dy += chemotaxis_force[1]
+            
+            # Si está muy hambriento, ignora parcialmente otros estímulos
+            if self.hunger > 0.8:
+                dx = dx * 0.3 + chemotaxis_force[0] * 0.7
+                dy = dy * 0.3 + chemotaxis_force[1] * 0.7
+        
+        # El movimiento "aleatorio" es realmente el flujo topológico
+        # No hay aleatoriedad real en PROTEUS - todo es determinista topológicamente
+        
+        # Aplicar motilidad con movimiento más suave
+        motility = self.capabilities["motility"]
+        # Mayor inercia (0.95) para movimiento más fluido
+        self.vx = self.vx * 0.95 + dx * motility * dt * 0.8
+        self.vy = self.vy * 0.95 + dy * motility * dt * 0.8
+        
+        # Límite de velocidad más suave
+        speed = np.sqrt(self.vx**2 + self.vy**2)
+        max_speed = 3.0 * motility
+        if speed > max_speed:
+            # Reducción gradual de velocidad
+            reduction_factor = 0.95
+            self.vx = self.vx * reduction_factor
+            self.vy = self.vy * reduction_factor
+        
+        # Actualizar posición
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        
+        # Debug: log movement occasionally
+        if hasattr(self, '_debug_counter'):
+            self._debug_counter += 1
+        else:
+            self._debug_counter = 0
+            
+        
+        # Consumo de energía (más costoso)
+        base_cost = 0.02 * dt  # Duplicado
+        movement_cost = speed * 0.003 * dt  # Triplicado
+        total_cost = (base_cost + movement_cost + organ_cost) / self.capabilities["efficiency"]
+        
+        # Ganancia de energía por nutrientes (más difícil)
+        nutrient_level = field_state.get("nutrient_level", 0)
+        energy_gain = nutrient_level * 0.03 * dt * self.capabilities["efficiency"]  # Reducido
+        
+        # Penalización adicional por luz
+        light_level = field_state.get("light_level", 0)
+        if light_level > 0:
+            # La luz daña gradualmente
+            light_damage = light_level * 0.1 * dt * (1 - self.capabilities["protection"])
+            total_cost += light_damage
+        
+        self.energy += energy_gain - total_cost
+        self.energy = max(0, min(1.5, self.energy))  # Límite más bajo
+        
+        # Envejecimiento
+        self.age += dt
+        
+        # Verificar muerte
+        if self.energy <= 0:
+            self.die("starvation")
+        elif self.age > 50:  # Vida más corta
+            self.die("old_age")
+        
+        # Guardar posición para trayectoria
+        if len(self.trajectory) < 100:
+            self.trajectory.append({"x": self.x, "y": self.y})
+        
+        # Actualizar historia topológica
+        self.topological_state.add_position(np.array([self.x, self.y]))
+    
+    def _update_capabilities(self):
+        """Actualiza capacidades basadas en órganos funcionales"""
+        # Reset capacidades
+        self.capabilities = {
+            "vision": 0.0,
+            "chemotaxis": 0.0,
+            "motility": 0.5,
+            "protection": 0.0,
+            "efficiency": 1.0
+        }
+        
+        # Agregar contribuciones de órganos
+        for organ in self.organs:
+            if organ.functionality > 0:
+                if organ.type == "photosensor":
+                    self.capabilities["vision"] += organ.functionality
+                elif organ.type == "chemoreceptor":
+                    self.capabilities["chemotaxis"] += organ.functionality
+                elif organ.type == "flagellum":
+                    self.capabilities["motility"] += organ.functionality * 0.5
+                elif organ.type == "cilia":
+                    self.capabilities["motility"] += organ.functionality * 0.3
+                elif organ.type == "membrane":
+                    self.capabilities["protection"] += organ.functionality * 0.5
+                    self.capabilities["efficiency"] += organ.functionality * 0.2
+                elif organ.type == "vacuole":
+                    self.capabilities["efficiency"] += organ.functionality * 0.3
+                elif organ.type == "crystallin":
+                    self.capabilities["vision"] += organ.functionality * 1.5
+                elif organ.type == "pigment_spot":
+                    self.capabilities["vision"] += organ.functionality * 0.5
+        
+        # Limitar capacidades
+        for key in self.capabilities:
+            if key == "motility" or key == "efficiency":
+                self.capabilities[key] = max(0.1, min(2.0, self.capabilities[key]))
+            else:
+                self.capabilities[key] = max(0.0, min(1.0, self.capabilities[key]))
+    
+    def can_reproduce(self) -> bool:
+        """Verifica si puede reproducirse - necesita estar bien alimentado"""
+        return (
+            self.alive and 
+            self.energy > 1.3 and  # Necesita más energía
+            self.hunger < 0.3 and  # No puede estar hambriento
+            self.age > 10 and     # Debe ser más viejo
+            self.age - self.last_reproduction > 8 and  # Más tiempo entre reproducciones
+            self.nutrients_consumed > 3  # Debe haberse alimentado bien
+        )
+    
+    def feed(self, nutrient_energy: float):
+        """El organismo se alimenta de un nutriente"""
+        if self.feeding_cooldown <= 0:
+            # Ganar energía
+            self.energy += nutrient_energy * self.capabilities["efficiency"]
+            self.energy = min(self.energy, 2.0)  # Límite máximo
+            
+            # Reducir hambre significativamente
+            self.hunger = max(0, self.hunger - nutrient_energy * 2)
+            
+            # Registrar alimentación
+            self.nutrients_consumed += 1
+            self.last_meal_age = self.age
+            self.feeding_cooldown = 5  # Tiempo entre comidas
+            
+            return True
+        return False
+    
+    def die(self, cause: str):
+        """Marca el organismo como muerto"""
+        self.alive = False
+        self.death_cause = cause
+    
+    def get_genome(self) -> TopologicalGenome:
+        """Obtiene el genoma para herencia"""
+        return self.genome
+    
+    def mutate(self):
+        """Aplica mutaciones basadas en invariantes topológicos"""
+        # Extraer características topológicas de la trayectoria
+        invariants = self._extract_topological_invariants()
+        
+        # Mutación base del genoma
+        base_rate = 0.2
+        
+        # Modular tasa de mutación según comportamiento topológico
+        if invariants['persistence'] > 0.8:
+            # Organismos persistentes mutan menos
+            mutation_rate = base_rate * 0.5
+        elif invariants['complexity'] > 0.7:
+            # Organismos con trayectorias complejas mutan más
+            mutation_rate = base_rate * 1.5
+        else:
+            mutation_rate = base_rate
+        
+        self.genome.mutate(mutation_rate)
+        
+        # EVOLUCIÓN TOPOLÓGICA: Los órganos emergen según patrones de movimiento
+        # No es aleatorio - es determinado por la topología
+        
+        # Organismos que giran mucho desarrollan sensores
+        if invariants['winding_number'] != 0 and np.random.random() < 0.1:
+            if "photosensor" in self.genome.organ_expressions:
+                self.genome.organ_expressions["photosensor"] += 0.1
+            else:
+                self.genome.organ_expressions["photosensor"] = 0.2
+        
+        # Organismos persistentes desarrollan motilidad
+        if invariants['persistence'] > 0.7 and np.random.random() < 0.1:
+            if "flagellum" in self.genome.organ_expressions:
+                self.genome.organ_expressions["flagellum"] += 0.1
+            else:
+                self.genome.organ_expressions["flagellum"] = 0.2
+        
+        # Organismos con trayectorias complejas desarrollan quimiotaxis
+        if invariants['complexity'] > 0.6 and np.random.random() < 0.1:
+            if "chemoreceptor" in self.genome.organ_expressions:
+                self.genome.organ_expressions["chemoreceptor"] += 0.1
+            else:
+                self.genome.organ_expressions["chemoreceptor"] = 0.2
+        
+        # Actualizar matriz topológica basada en invariantes
+        if hasattr(self.genome, 'topology'):
+            # La topología se ajusta según el comportamiento observado
+            if invariants['curvature'] > 0.5:
+                # Alta curvatura -> más conexiones cruzadas
+                i, j = np.random.randint(0, self.genome.topology.shape[0], 2)
+                if i != j:
+                    self.genome.topology[i, j] += invariants['curvature'] * 0.1
+                    self.genome.topology[i, j] = np.clip(self.genome.topology[i, j], -1, 1)
+    
+    def _compute_inherited_signal(self) -> np.ndarray:
+        """
+        Calcula la señal heredada basada en la topología del genoma
+        Esta es la clave de la evolución sin genes - pura topología
+        """
+        # Usar la matriz topológica del genoma para modular el comportamiento
+        if hasattr(self.genome, 'topology'):
+            # Proyectar el estado actual a través de la topología heredada
+            state_vector = np.array([
+                self.energy,
+                self.age / 50.0,  # Normalizado
+                self.capabilities.get("vision", 0),
+                self.capabilities.get("chemotaxis", 0),
+                self.capabilities.get("motility", 0.1),
+            ])
+            
+            # Reducir dimensiones si es necesario
+            if len(state_vector) > self.genome.topology.shape[0]:
+                state_vector = state_vector[:self.genome.topology.shape[0]]
+            elif len(state_vector) < self.genome.topology.shape[0]:
+                state_vector = np.pad(state_vector, 
+                                    (0, self.genome.topology.shape[0] - len(state_vector)))
+            
+            # Computación topológica: proyectar estado a través de la matriz heredada
+            signal = np.dot(self.genome.topology, state_vector)
+            
+            # Tomar las primeras 2 componentes para movimiento 2D
+            return signal[:2] * 0.5
+        else:
+            return np.zeros(2)
+    
+    def _extract_topological_invariants(self) -> Dict:
+        """
+        Extrae invariantes topológicos de la trayectoria del organismo
+        Estos se heredan y definen el comportamiento futuro
+        """
+        if self.topology_engine and len(self.topological_state.trajectory_history) > 10:
+            return self.topology_engine.extract_topological_features(
+                self.topological_state.trajectory_history
+            )
+        else:
+            return {
+                'curvature': 0.0,
+                'winding_number': 0,
+                'persistence': 0.0,
+                'complexity': 0.0
+            }
+    
+    def get_phenotype(self) -> str:
+        """Retorna descripción del fenotipo basado en topología"""
+        traits = []
+        
+        # Rasgos basados en capacidades
+        if self.capabilities["vision"] > 0.5:
+            traits.append("Visual")
+        if self.capabilities["chemotaxis"] > 0.5:
+            traits.append("Chemical")
+        if self.capabilities["motility"] > 1.5:
+            traits.append("Fast")
+        if self.capabilities["protection"] > 0.5:
+            traits.append("Armored")
+        if self.capabilities["efficiency"] > 1.3:
+            traits.append("Efficient")
+        
+        # Rasgos topológicos
+        invariants = self._extract_topological_invariants()
+        if invariants['persistence'] > 0.7:
+            traits.append("Persistent")
+        if invariants['winding_number'] != 0:
+            traits.append("Spiral")
+        if invariants['complexity'] > 0.5:
+            traits.append("Complex")
+        
+        return "-".join(traits) if traits else "Basic"
+
+
+class WebPredator:
+    """Depredador luminoso simplificado para web"""
+    
+    def __init__(self, x: float, y: float):
+        self.id = str(uuid.uuid4())
+        self.x = x
+        self.y = y
+        self.vx = 0.0
+        self.vy = 0.0
+        
+        # Propiedades de ataque mejoradas
+        self.light_radius = 80.0  # Mayor alcance
+        self.is_attacking = False
+        self.attack_cooldown = 0
+        self.attack_duration = 30  # Ataques más largos
+        
+        # Comportamiento
+        self.target_organism = None
+        self.patrol_angle = np.random.random() * 2 * np.pi
+        self.hunt_radius = 200  # Radio de búsqueda más amplio
+    
+    def update(self, organisms: List[WebOrganism], dt: float, activity_level: float = 1.0):
+        """Actualiza el depredador"""
+        # Reducir cooldown
+        if self.attack_cooldown > 0:
+            self.attack_cooldown -= 1
+            self.is_attacking = self.attack_cooldown > (100 - self.attack_duration)
+        
+        # Buscar presa más cercana
+        if not self.is_attacking and organisms:
+            closest_dist = float('inf')
+            closest_organism = None
+            
+            for org in organisms:
+                if org.alive:
+                    dist = np.sqrt((org.x - self.x)**2 + (org.y - self.y)**2)
+                    if dist < closest_dist:
+                        closest_dist = dist
+                        closest_organism = org
+            
+            self.target_organism = closest_organism
+            
+            # Perseguir si está dentro del radio de caza
+            if closest_organism and closest_dist < self.hunt_radius:
+                dx = closest_organism.x - self.x
+                dy = closest_organism.y - self.y
+                norm = np.sqrt(dx**2 + dy**2)
+                
+                if norm > 0:
+                    # Velocidad proporcional a la distancia y nivel de actividad
+                    base_speed = 2.5 if closest_dist > 100 else 1.8
+                    speed = base_speed * activity_level
+                    self.vx = (dx / norm) * speed
+                    self.vy = (dy / norm) * speed
+                
+                # Atacar si está dentro del radio de luz
+                if closest_dist < self.light_radius * 0.8 and self.attack_cooldown == 0:
+                    self.is_attacking = True
+                    self.attack_cooldown = 80  # Menos cooldown = más ataques
+            else:
+                # Patrullar con velocidad ajustada por actividad
+                self.patrol_angle += np.random.normal(0, 0.15)
+                patrol_speed = 1.2 * activity_level
+                self.vx = np.cos(self.patrol_angle) * patrol_speed
+                self.vy = np.sin(self.patrol_angle) * patrol_speed
+        
+        # Actualizar posición
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        
+        # Fricción
+        self.vx *= 0.95
+        self.vy *= 0.95

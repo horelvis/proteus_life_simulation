@@ -1,0 +1,44 @@
+# PROTEUS Backend - Simplified version
+FROM python:3.11
+
+# Disable buildkit
+ENV DOCKER_BUILDKIT=0
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libxrender1 \
+    libxext6 \
+    libsm6 \
+    xvfb \
+    gcc \
+    g++ && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy and install requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application
+COPY proteus /app/proteus
+COPY *.py /app/
+
+# Set environment
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV DISPLAY=:99
+
+# Create startup script
+RUN echo '#!/bin/bash' > /app/start.sh && \
+    echo 'Xvfb :99 -screen 0 1024x768x24 &' >> /app/start.sh && \
+    echo 'sleep 2' >> /app/start.sh && \
+    echo 'python run_server.py' >> /app/start.sh && \
+    chmod +x /app/start.sh
+
+EXPOSE 8000
+
+CMD ["/app/start.sh"]

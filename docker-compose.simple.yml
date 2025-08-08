@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # Backend sin buildkit
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile.simple
+    container_name: proteus-backend-simple
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DISPLAY=:99
+      - DOCKER_BUILDKIT=0
+    volumes:
+      - ./backend/proteus:/app/proteus:ro
+      - ./backend/run_server.py:/app/run_server.py:ro
+      - ./backend/proteus_vispy.py:/app/proteus_vispy.py:ro
+    restart: unless-stopped
+
+  # Frontend
+  frontend:
+    image: node:18-alpine
+    container_name: proteus-frontend-simple
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+    command: sh -c "npm install && npm start"
+    environment:
+      - REACT_APP_BACKEND_URL=http://localhost:8000
+      - REACT_APP_WS_URL=ws://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+networks:
+  default:
+    name: proteus-network-simple

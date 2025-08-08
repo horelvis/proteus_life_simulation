@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # Backend con GPU/Vispy
+  proteus-backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: proteus-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DISPLAY=:99
+    volumes:
+      # Para desarrollo - montar código fuente
+      - ./backend/proteus:/app/proteus:ro
+      - ./backend/run_server.py:/app/run_server.py:ro
+      - ./backend/proteus_vispy.py:/app/proteus_vispy.py:ro
+    restart: unless-stopped
+    # Para soporte GPU (requiere nvidia-docker)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # Frontend React
+  proteus-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: proteus-frontend
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_BACKEND_URL=http://localhost:8000
+      - REACT_APP_WS_URL=ws://localhost:8000
+    depends_on:
+      - proteus-backend
+    restart: unless-stopped
+
+  # Servicios originales (legacy)
+  proteus:
+    build: .
+    container_name: proteus_simulator
+    volumes:
+      - ./output:/app/output
+      - ./experiment_results:/app/experiment_results
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+    command: python visual_demo.py
+    
+  proteus-interactive:
+    build: .
+    container_name: proteus_interactive
+    volumes:
+      - ./output:/app/output
+      - ./experiment_results:/app/experiment_results
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+    
+  proteus-evolution:
+    build: .
+    container_name: proteus_evolution
+    volumes:
+      - ./output:/app/output
+      - ./experiment_results:/app/experiment_results
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+    command: python main.py evolve -g 10 -p 50 -d 5 -t 500
+
+networks:
+  default:
+    name: proteus-network
