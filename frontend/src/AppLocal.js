@@ -4,6 +4,8 @@ import SimulationCanvas from './components/SimulationCanvas';
 import ControlPanel from './components/ControlPanel';
 import StatsPanel from './components/StatsPanel';
 import OrganismInfo from './components/OrganismInfo';
+import SimulationReport from './components/SimulationReport';
+import MathematicsPanel from './components/MathematicsPanel';
 import { Simulation } from './simulation/Simulation';
 
 const AppContainer = styled.div`
@@ -67,10 +69,45 @@ const Sidebar = styled.aside`
   overflow: hidden;
 `;
 
+const BottomPanel = styled.div`
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 300px;
+  background-color: var(--bg-secondary);
+  border-top: 1px solid var(--bg-tertiary);
+  max-height: 400px;
+  transition: transform 0.3s ease-out;
+  transform: ${props => props.$show ? 'translateY(0)' : 'translateY(100%)'};
+  z-index: 100;
+`;
+
+const ToggleButton = styled.button`
+  position: fixed;
+  bottom: 10px;
+  left: 10px;
+  background-color: var(--accent-primary);
+  color: var(--bg-primary);
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  z-index: 101;
+  
+  &:hover {
+    background-color: var(--accent-secondary);
+  }
+`;
+
 function AppLocal() {
   const [selectedOrganismId, setSelectedOrganismId] = useState(null);
   const [simulationState, setSimulationState] = useState(null);
   const [status, setStatus] = useState('stopped');
+  const [showReport, setShowReport] = useState(false);
+  const [simulationReport, setSimulationReport] = useState(null);
+  const [showMathPanel, setShowMathPanel] = useState(false);
   const simulationRef = useRef(null);
   const animationFrameRef = useRef(null);
 
@@ -119,8 +156,21 @@ function AppLocal() {
   const handleStop = () => {
     if (simulationRef.current) {
       simulationRef.current.stop();
+      
+      // Generate report before clearing
+      const report = simulationRef.current.getSimulationReport();
+      setSimulationReport(report);
+      
+      // Don't clear organisms immediately - preserve genetics
+      setStatus('stopped');
+    }
+  };
+  
+  const handleReset = () => {
+    if (simulationRef.current) {
       simulationRef.current.organisms = [];
       simulationRef.current.nutrients = [];
+      simulationRef.current.predators = [];
       simulationRef.current.initialize();
       setStatus('stopped');
     }
@@ -160,7 +210,7 @@ function AppLocal() {
             memoryAnchors={simulationState?.memoryAnchors || []}
             worldSize={worldSize}
             selectedOrganismId={selectedOrganismId}
-            onOrganismClick={setSelectedOrganismId}
+            onOrganismClick={(organism) => setSelectedOrganismId(organism.id)}
             onCanvasClick={handleSpawnOrganism}
           />
         </CanvasContainer>
@@ -171,13 +221,38 @@ function AppLocal() {
           onStart={handleStart}
           onPause={handlePause}
           onStop={handleStop}
+          onReset={handleReset}
           onSpeedChange={handleSpeedChange}
+          onShowReport={() => setShowReport(true)}
         />
         <StatsPanel statistics={simulationState?.statistics || {}} />
         {selectedOrganism && (
-          <OrganismInfo organism={selectedOrganism} />
+          <OrganismInfo 
+            organism={selectedOrganism} 
+            onClose={() => setSelectedOrganismId(null)}
+          />
         )}
       </Sidebar>
+      
+      <ToggleButton onClick={() => setShowMathPanel(!showMathPanel)}>
+        {showMathPanel ? '📊 Hide Math' : '📊 Show Math'}
+      </ToggleButton>
+      
+      <BottomPanel $show={showMathPanel}>
+        <MathematicsPanel
+          organisms={simulationState?.organisms || []}
+          predators={simulationState?.predators || []}
+          environmentalField={simulationState?.environmentalField || []}
+          statistics={simulationState?.statistics || {}}
+        />
+      </BottomPanel>
+      
+      {showReport && simulationReport && (
+        <SimulationReport
+          report={simulationReport}
+          onClose={() => setShowReport(false)}
+        />
+      )}
     </AppContainer>
   );
 }

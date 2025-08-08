@@ -61,35 +61,39 @@ export class ProteusInheritance {
         baseSensitivity: 0.2 + Math.random() * 0.6,
         baseResilience: 0.4 + Math.random() * 0.4,
         
-        // Mutation rate (increased for more visible evolution)
-        mutability: 0.02 + Math.random() * 0.03  // 2-5% mutation rate
+        // Mutation rate (drastically increased for rapid evolution)
+        mutability: 0.20 + Math.random() * 0.20  // 20-40% mutation rate for aggressive evolution
       };
     }
     
-    // Mendelian inheritance with rare mutations
+    // SIMPLIFIED: Always mutate, let chaos drive evolution
     const core = {};
-    const mutationRate = parent1.topologicalCore.mutability;
-    let mutationOccurred = false;
+    const mutationRate = 0.5; // Fixed high rate
     
-    // Each parameter has dominant/recessive inheritance
+    // Copy from parent
     for (const key in parent1.topologicalCore) {
       if (parent2 && Math.random() < 0.5) {
-        // Inherit from parent2
         core[key] = parent2.topologicalCore[key];
       } else {
-        // Inherit from parent1
         core[key] = parent1.topologicalCore[key];
       }
       
-      // Rare mutations
+      // ALWAYS mutate something
       if (Math.random() < mutationRate) {
+        const oldValue = core[key];
         core[key] = this.mutateParameter(key, core[key]);
-        mutationOccurred = true;
+        
+        // Sometimes do EXTREME mutations
+        if (Math.random() < 0.1) {
+          if (typeof core[key] === 'number') {
+            core[key] = Math.random(); // Complete randomization
+          }
+        }
       }
     }
     
-    // Mark if mutation occurred for visual feedback
-    core.hasMutation = mutationOccurred;
+    // Always has mutation now
+    core.hasMutation = true;
     
     return core;
   }
@@ -119,11 +123,13 @@ export class ProteusInheritance {
       case 'baseMotility':
       case 'baseSensitivity':
       case 'baseResilience':
-        // Larger mutations for more visible trait changes
-        return Math.max(0.1, Math.min(1, value + (Math.random() - 0.5) * 0.25));
+        // Much larger mutations for rapid trait evolution
+        const traitChange = (Math.random() - 0.5) * 0.5; // ±0.25 range
+        return Math.max(0.1, Math.min(1, value + traitChange));
       
       case 'mutability':
-        return Math.max(0.01, Math.min(0.1, value * (0.8 + Math.random() * 0.4)));
+        // Allow mutability to evolve more dramatically
+        return Math.max(0.1, Math.min(0.5, value * (0.5 + Math.random() * 1.0)));
       
       default:
         return value;
@@ -277,13 +283,21 @@ export class ProteusInheritance {
       foraging: memoryInfluence.forageIntensity,
       sociability: memoryInfluence.socialAttraction,
       
-      // Organ expression probabilities
+      // SIMPLIFIED: All organs always have some expression, let selection decide
       organExpressions: {
-        photosensor: core.baseSensitivity * (1 + memoryInfluence.cautionLevel),
-        chemoreceptor: core.baseSensitivity * (1 + memoryInfluence.forageIntensity),
-        flagellum: core.baseMotility,
-        membrane: core.baseResilience,
-        vacuole: 0.5
+        photosensor: Math.random(),
+        chemoreceptor: Math.random(),
+        flagellum: Math.random(),
+        membrane: Math.random(),
+        vacuole: Math.random(),
+        toxin_gland: Math.random(),
+        armor_plates: Math.random(),
+        speed_boost: Math.random(),
+        // Add even more random organs
+        electric_organ: Math.random(),
+        regeneration: Math.random(),
+        camouflage: Math.random(),
+        pheromone_emitter: Math.random()
       }
     };
   }

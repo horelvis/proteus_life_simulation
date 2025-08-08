@@ -121,7 +121,7 @@ const Slider = styled.input`
   }
 `;
 
-const ControlPanel = ({ status, onStart, onPause, onStop, onReset, onSpeedChange, initialSpeed = 1.0 }) => {
+const ControlPanel = ({ status, onStart, onPause, onStop, onReset, onSpeedChange, onShowReport, initialSpeed = 1.0 }) => {
   const isRunning = status === 'running';
   const isPaused = status === 'paused';
   const isStopped = status === 'stopped' || status === 'created';
@@ -172,6 +172,16 @@ const ControlPanel = ({ status, onStart, onPause, onStop, onReset, onSpeedChange
           Reset
         </Button>
       </ButtonGroup>
+      
+      {onShowReport && (
+        <Button 
+          $secondary
+          onClick={onShowReport}
+          style={{ width: '100%', marginTop: '0.5rem' }}
+        >
+          Show Report 📊
+        </Button>
+      )}
       
       <SpeedControl>
         <SpeedHeader>

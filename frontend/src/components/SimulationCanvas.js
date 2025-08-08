@@ -347,11 +347,11 @@ const SimulationCanvas = ({
   };
 
   const drawOrganism = (ctx, organism, isSelected) => {
-    const { position, velocity, color, energy, organs = [], age = 0, generation = 0, isPanicked = false } = organism;
+    const { position, velocity, color, energy, organs = [], age = 0, maxAge = 100, generation = 0, isPanicked = false } = organism;
     
     // Draw trajectory if selected
     if (isSelected && organism.trajectory) {
-      ctx.strokeStyle = hslToRgba(color, 0.125);
+      ctx.strokeStyle = 'rgba(100, 150, 200, 0.3)';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       organism.trajectory.forEach((point, i) => {
@@ -367,9 +367,14 @@ const SimulationCanvas = ({
     ctx.save();
     ctx.translate(position.x, position.y);
 
-    // Calculate organism size based on energy and age (50% smaller)
-    const baseSize = 5;
-    const size = baseSize + energy * 1.5 + Math.sin(age * 0.1) * 0.25;
+    // Calculate organism size
+    const baseSize = 8;
+    const size = baseSize + energy * 2 + Math.sin(age * 0.1) * 0.5;
+    
+    // Calculate aging effects
+    const ageRatio = age / maxAge;
+    const isAging = ageRatio > 0.6;
+    const agingIntensity = isAging ? (ageRatio - 0.6) / 0.4 : 0;
     
     // Rotation based on movement
     const rotation = Math.atan2(velocity.y, velocity.x);
@@ -377,18 +382,18 @@ const SimulationCanvas = ({
 
     // Time-based animation
     const time = Date.now() * 0.001;
-    const pulseScale = 1 + Math.sin(time + position.x * 0.01) * 0.03;
+    const breathingScale = 1 + Math.sin(time * 2 + position.x * 0.01) * 0.02;
     
-    // Simple design without halo
-    const bodyLength = size * 1.8;
+    // Body dimensions
+    const bodyLength = size * 1.4 * breathingScale;
+    const bodyWidth = size * breathingScale;
     
-    // Panic indicator - rapid flashing when in danger
+    // Panic indicator
     if (isPanicked) {
       const panicFlash = Math.sin(Date.now() * 0.02) > 0;
       if (panicFlash) {
-        // Red danger flash
         const panicGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 2);
-        panicGradient.addColorStop(0, 'rgba(255, 100, 100, 0.6)');
+        panicGradient.addColorStop(0, 'rgba(255, 100, 100, 0.4)');
         panicGradient.addColorStop(1, 'transparent');
         ctx.fillStyle = panicGradient;
         ctx.beginPath();
@@ -397,81 +402,158 @@ const SimulationCanvas = ({
       }
     }
     
-    // Simple elliptical body
+    // Create irregular oval shape with narrower center
     ctx.beginPath();
-    ctx.ellipse(0, 0, bodyLength * 0.5, size * 0.8, 0, 0, Math.PI * 2);
-    
-    // Luminous membrane
-    ctx.strokeStyle = hslToRgba(color, 0.87);
-    ctx.lineWidth = 2;
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = color;
-    ctx.stroke();
-    
-    // Inner glow
-    const innerGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
-    innerGlow.addColorStop(0, hslToRgba(color, 1.0));
-    innerGlow.addColorStop(0.3, hslToRgba(color, 0.8));
-    innerGlow.addColorStop(0.6, hslToRgba(color, 0.53));
-    innerGlow.addColorStop(1, hslToRgba(color, 0.27));
-    ctx.fillStyle = innerGlow;
-    ctx.fill();
-    
-    // Reset shadow
-    ctx.shadowBlur = 0;
-    
-    // Simple nucleus - bright spot
-    const nucleusPulse = Math.sin(time * 2) * 0.1 + 0.9;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-    ctx.beginPath();
-    ctx.arc(bodyLength * 0.1, 0, size * 0.25 * nucleusPulse, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Energy indicators - static dots
-    if (energy > 0.3) {
-      const dots = Math.ceil(energy * 3);
-      for (let i = 0; i < dots; i++) {
-        const angle = (i / dots) * Math.PI * 2;
-        const dist = size * 0.5;
-        const x = Math.cos(angle) * dist;
-        const y = Math.sin(angle) * dist;
-        
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-        ctx.beginPath();
-        ctx.arc(x, y, size * 0.1, 0, Math.PI * 2);
-        ctx.fill();
+    const points = 16;
+    for (let i = 0; i < points; i++) {
+      const angle = (i / points) * Math.PI * 2;
+      const wobble = Math.sin(angle * 3 + time) * 0.05 + Math.sin(angle * 5) * 0.03;
+      
+      // Create pinched center effect
+      const centerPinch = 1 - Math.abs(Math.cos(angle)) * 0.2; // Narrower at sides
+      
+      const radiusX = (bodyLength * 0.5) * (1 + wobble);
+      const radiusY = (bodyWidth * 0.5) * centerPinch * (1 + wobble * 0.5);
+      const x = Math.cos(angle) * radiusX;
+      const y = Math.sin(angle) * radiusY;
+      
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
       }
     }
-
-    // Flagellum removed for cleaner design
-
-    // Visual indicators for special organs - simplified
-    const photosensor = organs.find(o => o.type === 'photosensor' && o.functionality > 0.1);
-    if (photosensor) {
-      // Luminous eyespot
-      const eyespotX = bodyLength * 0.4;
-      const eyespotY = -size * 0.3;
+    ctx.closePath();
+    
+    // Main body color - blue-green tones
+    const baseColor = isAging ? 
+      `rgba(40, 120, 140, ${0.8 - agingIntensity * 0.3})` : 
+      'rgba(50, 150, 170, 0.8)';
+    
+    // Dark blue outline
+    ctx.strokeStyle = isAging ? 
+      `rgba(20, 60, 80, ${0.9 - agingIntensity * 0.2})` : 
+      'rgba(30, 70, 100, 0.9)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Fill body with gradient
+    const bodyGradient = ctx.createLinearGradient(-bodyLength/2, -bodyWidth/2, bodyLength/2, bodyWidth/2);
+    bodyGradient.addColorStop(0, baseColor);
+    bodyGradient.addColorStop(0.5, 'rgba(60, 160, 180, 0.7)');
+    bodyGradient.addColorStop(1, 'rgba(40, 130, 150, 0.8)');
+    ctx.fillStyle = bodyGradient;
+    ctx.fill();
+    
+    // Draw cilia/short spines around the organism
+    ctx.save();
+    const ciliaCount = 24;
+    for (let i = 0; i < ciliaCount; i++) {
+      const angle = (i / ciliaCount) * Math.PI * 2;
+      const wobblePhase = time * 3 + i * 0.5;
+      const ciliaLength = 2 + Math.sin(wobblePhase) * 0.5;
       
-      // Bright glow
-      ctx.shadowBlur = 8;
-      ctx.shadowColor = '#FF6600';
-      ctx.fillStyle = `rgba(255, 150, 50, ${photosensor.functionality})`;
+      // Position on the edge following the pinched shape
+      const centerPinch = 1 - Math.abs(Math.cos(angle)) * 0.2;
+      const edgeX = Math.cos(angle) * (bodyLength * 0.5);
+      const edgeY = Math.sin(angle) * (bodyWidth * 0.5 * centerPinch);
+      
+      // Cilia end point
+      const endX = edgeX + Math.cos(angle) * ciliaLength;
+      const endY = edgeY + Math.sin(angle) * ciliaLength;
+      
+      ctx.strokeStyle = 'rgba(20, 60, 80, 0.6)';
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(eyespotX, eyespotY, size * 0.15, 0, Math.PI * 2);
+      ctx.moveTo(edgeX, edgeY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+    }
+    ctx.restore();
+    
+    // Draw internal structures
+    // Large nucleus
+    const nucleusSize = size * 0.3;
+    const nucleusX = bodyLength * 0.1;
+    const nucleusY = 0;
+    
+    ctx.fillStyle = 'rgba(30, 80, 100, 0.6)';
+    ctx.beginPath();
+    ctx.arc(nucleusX, nucleusY, nucleusSize, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Nucleus inner structure
+    ctx.fillStyle = 'rgba(20, 60, 80, 0.8)';
+    ctx.beginPath();
+    ctx.arc(nucleusX, nucleusY, nucleusSize * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Vacuoles and other organelles
+    const vacuolePositions = [
+      { x: -bodyLength * 0.2, y: bodyWidth * 0.2, size: size * 0.15 },
+      { x: -bodyLength * 0.1, y: -bodyWidth * 0.3, size: size * 0.1 },
+      { x: bodyLength * 0.3, y: bodyWidth * 0.1, size: size * 0.12 },
+      { x: bodyLength * 0.2, y: -bodyWidth * 0.2, size: size * 0.08 }
+    ];
+    
+    vacuolePositions.forEach(vac => {
+      ctx.fillStyle = 'rgba(100, 180, 200, 0.4)';
+      ctx.beginPath();
+      ctx.arc(vac.x, vac.y, vac.size, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.strokeStyle = 'rgba(80, 140, 160, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
+    
+    // Small dots/granules throughout
+    ctx.fillStyle = 'rgba(40, 100, 120, 0.5)';
+    for (let i = 0; i < 8; i++) {
+      const granuleX = (Math.random() - 0.5) * bodyLength * 0.8;
+      const granuleY = (Math.random() - 0.5) * bodyWidth * 0.8;
+      const granuleSize = 1 + Math.random();
+      
+      ctx.beginPath();
+      ctx.arc(granuleX, granuleY, granuleSize, 0, Math.PI * 2);
       ctx.fill();
     }
     
-    // Chemoreceptor indication - simplified
+    // Aging effects - darken and add spots
+    if (isAging) {
+      ctx.fillStyle = `rgba(0, 0, 0, ${agingIntensity * 0.15})`;
+      ctx.fillRect(-bodyLength/2, -bodyWidth/2, bodyLength, bodyWidth);
+    }
+    
+
+    // Visual indicators for special organs
+    const photosensor = organs.find(o => o.type === 'photosensor' && o.functionality > 0.1);
+    if (photosensor) {
+      // Eyespot near front
+      const eyespotX = bodyLength * 0.35;
+      const eyespotY = -bodyWidth * 0.2;
+      
+      ctx.fillStyle = `rgba(200, 100, 50, ${photosensor.functionality * 0.8})`;
+      ctx.beginPath();
+      ctx.arc(eyespotX, eyespotY, size * 0.1, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Eyespot outline
+      ctx.strokeStyle = 'rgba(150, 70, 30, 0.8)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    
+    // Chemoreceptor indication
     const chemoreceptor = organs.find(o => o.type === 'chemoreceptor' && o.functionality > 0.1);
     if (chemoreceptor) {
-      // Luminous sensory halo at front
-      ctx.shadowBlur = 6;
-      ctx.shadowColor = '#00FF00';
-      ctx.fillStyle = `rgba(150, 255, 150, ${chemoreceptor.functionality * 0.4})`;
-      ctx.beginPath();
-      ctx.arc(bodyLength * 0.45, 0, size * 0.2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.shadowBlur = 0;
+      // Sensory patches at front
+      ctx.fillStyle = `rgba(80, 150, 100, ${chemoreceptor.functionality * 0.4})`;
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.arc(bodyLength * 0.45, i * bodyWidth * 0.2, size * 0.08, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     ctx.restore();

@@ -192,7 +192,14 @@ class SimulationEngine:
         predator_activity = 1.3 if is_night else 0.6  # Más activos de noche
         
         # Actualizar depredadores
-        for predator in self.predators:
+        new_predators = []
+        dead_predators = []
+        
+        for i, predator in enumerate(self.predators):
+            if not predator.alive:
+                dead_predators.append(i)
+                continue
+                
             # Verificar si está en zona segura
             in_safe_zone = self._is_in_safe_zone(predator.x, predator.y)
             
@@ -202,10 +209,22 @@ class SimulationEngine:
                 # Verificar ataques
                 if predator.is_attacking:
                     self._check_light_damage(predator)
+                    
+                # Verificar reproducción
+                if predator.can_reproduce():
+                    offspring = predator.reproduce()
+                    new_predators.append(offspring)
             else:
                 # Los depredadores no pueden entrar a zonas seguras, rebotan
                 predator.vx *= -0.5
                 predator.vy *= -0.5
+        
+        # Añadir nuevos depredadores
+        self.predators.extend(new_predators)
+        
+        # Eliminar depredadores muertos
+        for idx in reversed(dead_predators):
+            del self.predators[idx]
         
         # Actualizar organismos
         dead_organisms = []
@@ -285,6 +304,10 @@ class SimulationEngine:
                         "organism_id": organism.id,
                         "predator_id": predator.id
                     })
+                    
+                    # El depredador se alimenta de la presa
+                    energy_gained = 20  # Energía ganada por caza
+                    predator.feed(energy_gained)
     
     def _reproduce_organism(self, parent: WebOrganism):
         """Reproduce un organismo"""
@@ -382,8 +405,61 @@ class SimulationEngine:
         if alive_count == 0 and self.stats["total_organisms"] > 0:
             self.stats["extinctions"] += 1
             self._add_event({"type": "extinction", "generation": self.current_generation})
+            
+            # Reinicio automático como en frontend
+            logger.info(f"🚨 Extinción total detectada! Reiniciando simulación {self.sim_id}...")
+            self._auto_restart()
+            return  # Salir temprano para evitar problemas
         
         self.stats["total_organisms"] = alive_count
+    
+    def _auto_restart(self):
+        """Reinicia automáticamente la simulación después de extinción"""
+        logger.info(f"🔄 Auto-reiniciando simulación {self.sim_id}...")
+        
+        # Limpiar organismos y depredadores actuales
+        self.organisms.clear()
+        self.predators.clear()
+        
+        # Reinicializar campos
+        self.field_manager = FieldManager(self.config.world_size)
+        self.nutrient_field = NutrientField(self.config.world_size)
+        
+        # Crear nueva población con más organismos para asegurar supervivencia
+        initial_count = max(40, int(self.config.initial_organisms * 1.5))
+        initial_predators = max(2, int(self.config.initial_predators * 0.5))  # Menos depredadores
+        
+        # Crear organismos
+        for _ in range(initial_count):
+            x = np.random.uniform(0, self.config.world_size[0])
+            y = np.random.uniform(0, self.config.world_size[1])
+            organism = WebOrganism(x, y, self.topology_engine)
+            self.organisms.append(organism)
+        
+        # Crear depredadores (menos que lo normal)
+        for _ in range(initial_predators):
+            # Intentar posicionar lejos de zonas seguras
+            attempts = 0
+            while attempts < 10:
+                x = np.random.uniform(0, self.config.world_size[0])
+                y = np.random.uniform(0, self.config.world_size[1])
+                if not self._is_in_safe_zone(x, y):
+                    break
+                attempts += 1
+            
+            predator = WebPredator(x, y)
+            self.predators.append(predator)
+        
+        # Incrementar generación
+        self.current_generation += 1
+        
+        logger.info(f"✅ Simulación reiniciada con {len(self.organisms)} organismos y {len(self.predators)} depredadores")
+        self._add_event({
+            "type": "restart",
+            "generation": self.current_generation,
+            "organisms": len(self.organisms),
+            "predators": len(self.predators)
+        })
     
     def _add_event(self, event: Dict):
         """Añade un evento a la cola"""

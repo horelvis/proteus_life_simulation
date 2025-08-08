@@ -18,9 +18,12 @@ export class Organism {
     // Bio properties
     this.energy = 1.0;
     this.age = 0;
+    this.maxAge = 80 + Math.random() * 40; // Lifespan varies 80-120 time units
+    this.senescenceStartAge = this.maxAge * 0.6; // Aging starts at 60% of max age
     this.hunger = 0.5;
     this.alive = true;
     this.isPanicked = false;
+    this.agingFactor = 1.0; // Multiplier for aging effects
     
     // TRI-LAYER INHERITANCE SYSTEM
     this.inheritance = new ProteusInheritance(
@@ -46,56 +49,89 @@ export class Organism {
     this.trajectory = [];
     
     // Express phenotype from inheritance
+    this.phenotype = null; // Will be set in applyPhenotype
     this.applyPhenotype();
   }
   
   generateColor() {
-    // Color influenced by topological core
+    // Blue-green color scheme with genetic variation
     const core = this.inheritance.topologicalCore;
-    const hue = 150 + core.manifoldDimension * 20 + core.bodySymmetry * 5;
-    const saturation = 50 + core.baseSensitivity * 30;
-    const lightness = 50 + core.baseResilience * 20;
-    return `hsl(${hue % 360}, ${saturation}%, ${lightness}%)`;
+    // Base hue in blue-green range (160-200)
+    const hue = 170 + core.manifoldDimension * 15 + core.bodySymmetry * 3;
+    const saturation = 40 + core.baseSensitivity * 20;
+    const lightness = 45 + core.baseResilience * 10;
+    return `hsl(${hue % 200}, ${saturation}%, ${lightness}%)`;
   }
   
   applyPhenotype() {
     const phenotype = this.inheritance.phenotype;
     
-    // Generate organs based on phenotype
+    // Determine phenotype name based on dominant traits
+    this.phenotype = this.determinePhenotypeType(phenotype);
+    
+    // SIMPLIFIED: Express ALL organs, no thresholds
     this.organs = [];
     const expressions = phenotype.organExpressions;
     
-    if (expressions.photosensor > 0.3) {
-      this.organs.push({
-        type: 'photosensor',
-        functionality: Math.min(1, expressions.photosensor)
-      });
+    // Add every organ with its expression level
+    for (const [organType, expression] of Object.entries(expressions)) {
+      if (expression > 0.01) { // Minimal threshold just to avoid zero
+        this.organs.push({
+          type: organType,
+          functionality: expression
+        });
+      }
     }
     
-    if (expressions.chemoreceptor > 0.3) {
-      this.organs.push({
-        type: 'chemoreceptor',
-        functionality: Math.min(1, expressions.chemoreceptor)
-      });
-    }
-    
-    // Update capabilities from phenotype
+    // SIMPLIFIED: Sum all relevant organs for each capability
     this.capabilities = {
-      vision: this.organs.find(o => o.type === 'photosensor')?.functionality || 0,
-      chemotaxis: this.organs.find(o => o.type === 'chemoreceptor')?.functionality || 0,
+      vision: 0,
+      chemotaxis: 0,
       motility: phenotype.motility,
       protection: phenotype.resilience,
       efficiency: 1.0,
-      
-      // New behavioral traits from memory
-      curiosity: phenotype.curiosity,
-      fearfulness: phenotype.fearfulness,
-      foraging: phenotype.foraging,
-      sociability: phenotype.sociability
+      toxicity: 0,
+      regeneration: 0,
+      stealth: 0,
+      electric: 0,
+      social: 0
     };
+    
+    // Let organs contribute to multiple capabilities
+    this.organs.forEach(organ => {
+      switch(organ.type) {
+        case 'photosensor': this.capabilities.vision += organ.functionality; break;
+        case 'chemoreceptor': this.capabilities.chemotaxis += organ.functionality; break;
+        case 'speed_boost': 
+        case 'flagellum': this.capabilities.motility += organ.functionality * 0.3; break;
+        case 'armor_plates':
+        case 'membrane': this.capabilities.protection += organ.functionality * 0.3; break;
+        case 'toxin_gland': this.capabilities.toxicity += organ.functionality; break;
+        case 'regeneration': this.capabilities.regeneration += organ.functionality; break;
+        case 'camouflage': this.capabilities.stealth += organ.functionality; break;
+        case 'electric_organ': this.capabilities.electric += organ.functionality; break;
+        case 'vacuole': this.capabilities.efficiency += organ.functionality * 0.2; break;
+        case 'pheromone_emitter': this.capabilities.social += organ.functionality; break;
+      }
+    });
   }
   
   // Record experience for holographic memory
+  determinePhenotypeType(phenotype) {
+    // SIMPLIFIED: Just name by dominant organ
+    let maxOrgan = 'basic';
+    let maxValue = 0;
+    
+    for (const [organ, value] of Object.entries(phenotype.organExpressions)) {
+      if (value > maxValue) {
+        maxValue = value;
+        maxOrgan = organ;
+      }
+    }
+    
+    return maxOrgan;
+  }
+  
   recordExperience(type, importance = 0.5) {
     const experience = {
       type,
@@ -116,6 +152,9 @@ export class Organism {
     // Process significant experiences immediately
     if (importance > 0.7) {
       this.inheritance.experience(experience);
+      
+      // Let natural selection handle evolution, not directed evolution
+      
       this.applyPhenotype(); // Update behavior based on new memory
     }
   }
@@ -125,6 +164,9 @@ export class Organism {
     
     this.age += deltaTime;
     this.hunger = Math.min(1.0, this.hunger + deltaTime * 0.01);
+    
+    // Calculate aging effects
+    this.updateAging();
     
     // Update trajectory for memory
     this.trajectory.push({ x: this.position.x, y: this.position.y });
@@ -266,12 +308,33 @@ export class Organism {
       this.smoothPosition.y = this.smoothPosition.y - worldHeight; // Sync smooth position
     }
     
-    // Energy consumption modulated by efficiency
-    const energyLoss = deltaTime * 0.02 * (2 - this.capabilities.efficiency);
+    // Energy loss affected by efficiency (vacuoles)
+    let energyLoss = deltaTime * 0.015 / (1 + this.capabilities.efficiency * 0.5);
+    
+    // Regeneration reduces energy loss
+    if (this.capabilities.regeneration > 0) {
+      energyLoss *= (1 - this.capabilities.regeneration * 0.3);
+    }
+    
+    // Check if organism is in safe zone
+    if (this.environmentalMemory && this.environmentalMemory.inSafeZone) {
+      // Reduced energy loss in safe zones (50% reduction)
+      energyLoss *= 0.5;
+      
+      // Slow energy regeneration in safe zones if hungry
+      if (this.energy < 1.0 && this.hunger > 0.3) {
+        this.energy = Math.min(1.0, this.energy + deltaTime * 0.01);
+        this.hunger = Math.max(0, this.hunger - deltaTime * 0.02);
+      }
+    }
+    
     this.energy -= energyLoss;
     
+    // Death conditions
     if (this.energy <= 0) {
-      this.die();
+      this.die('starvation');
+    } else if (this.age >= this.maxAge) {
+      this.die('old_age');
     }
     
     // Update topological state
@@ -298,6 +361,17 @@ export class Organism {
     
     return nearest;
   }
+  
+  getToxinDefense() {
+    // Toxin defense against predators
+    return this.capabilities.toxicity || 0;
+  }
+  
+  getElectricDefense() {
+    // Electric defense can stun predators
+    return this.capabilities.electric || 0;
+  }
+  
   
   detectPredatorThreat(predators) {
     if (!predators || predators.length === 0) return null;
@@ -340,10 +414,8 @@ export class Organism {
   }
   
   canReproduce() {
-    // Reproduction influenced by phenotype
-    const baseThreshold = 1.5 - this.capabilities.efficiency * 0.3;
-    const ageThreshold = 5 - this.inheritance.topologicalCore.baseResilience * 2;
-    return this.energy > baseThreshold && this.age > ageThreshold;
+    // SIMPLIFIED: Just energy threshold
+    return this.energy > 1.5 && this.age > 5;
   }
   
   reproduce() {
@@ -370,9 +442,40 @@ export class Organism {
     );
   }
   
+  updateAging() {
+    // No aging effects in youth
+    if (this.age < this.senescenceStartAge) {
+      this.agingFactor = 1.0;
+      return;
+    }
+    
+    // Calculate aging progress (0 to 1)
+    const agingProgress = (this.age - this.senescenceStartAge) / 
+                         (this.maxAge - this.senescenceStartAge);
+    
+    // Aging effects increase exponentially
+    this.agingFactor = 1 + agingProgress * agingProgress * 2; // Up to 3x at max age
+    
+    // Reduce capabilities with age
+    const capabilityReduction = 1 - (agingProgress * 0.5); // Up to 50% reduction
+    
+    // Apply aging to capabilities
+    this.capabilities.motility *= capabilityReduction;
+    this.capabilities.vision *= capabilityReduction;
+    this.capabilities.chemotaxis *= capabilityReduction;
+    this.capabilities.efficiency *= capabilityReduction;
+    
+    // Organs degrade with age
+    this.organs.forEach(organ => {
+      organ.functionality *= (1 - agingProgress * 0.01); // Slow degradation
+    });
+  }
+  
+  
   // Death with memory traces
-  die() {
+  die(cause = 'unknown') {
     this.alive = false;
+    this.deathCause = cause;
     
     // Leave strong environmental trace on death
     const deathExperience = {
@@ -383,10 +486,31 @@ export class Organism {
       timestamp: Date.now(),
       energy: 0,
       emotionalValue: 'terminal',
-      survivalValue: -1
+      survivalValue: -1,
+      cause: cause,
+      age: this.age
     };
     
     this.inheritance.experience(deathExperience);
+    
+    // Different memory impacts based on death cause
+    if (cause === 'old_age') {
+      // Natural death leaves peaceful memory
+      this.inheritance.experience({
+        type: 'natural_death',
+        importance: 0.5,
+        position: this.position,
+        age: this.age
+      });
+    } else if (cause === 'starvation') {
+      // Starvation leaves warning memory
+      this.inheritance.experience({
+        type: 'starvation_death',
+        importance: 0.8,
+        position: this.position,
+        lastNutrientDirection: this.lastNutrientDirection
+      });
+    }
     
     // Return environmental traces for the world to absorb
     return this.inheritance.environmentalTraces;

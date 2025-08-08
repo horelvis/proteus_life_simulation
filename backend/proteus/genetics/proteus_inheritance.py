@@ -31,7 +31,7 @@ class TopologicalCore:
     base_resilience: float = 0.5
     
     # Evolution
-    mutability: float = 0.01
+    mutability: float = 0.10  # Increased from 0.01 to match frontend (5-15%)
     
     def mutate(self, rate: float = None) -> 'TopologicalCore':
         """Create mutated copy"""
@@ -109,6 +109,8 @@ class ProteusInheritance:
         else:
             # Genesis
             self.core = TopologicalCore()
+            # Set random mutability between 5-15% to match frontend
+            self.core.mutability = 0.05 + np.random.random() * 0.10
             
         # Layer 2: Holographic Memory
         self.memory = HolographicMemory(

@@ -7,12 +7,14 @@ import { Organism } from './Organism';
 import { Nutrient } from './Nutrient';
 import { Predator } from './Predator';
 import { EnvironmentalField } from './EnvironmentalField';
+import { GeneticPool } from './GeneticPool';
 
 export class Simulation {
   constructor(worldSize) {
     this.worldSize = worldSize;
     this.topologyEngine = new TopologyEngine(worldSize);
     this.environmentalField = new EnvironmentalField(worldSize);
+    this.geneticPool = new GeneticPool();
     
     this.organisms = [];
     this.nutrients = [];
@@ -33,6 +35,8 @@ export class Simulation {
     };
     
     this.lastUpdate = Date.now();
+    this.birthsSinceLastUpdate = 0;
+    this.deathsSinceLastUpdate = 0;
   }
   
   generateSafeZones() {
@@ -54,11 +58,43 @@ export class Simulation {
     const {
       initialOrganisms = 30,
       initialNutrients = 50,
-      initialPredators = 8
+      initialPredators = 8,
+      useGeneticPool = true
     } = config;
     
-    // Create initial organisms
-    for (let i = 0; i < initialOrganisms; i++) {
+    // Start new simulation tracking
+    this.geneticPool.startNewSimulation();
+    
+    // Get elite genetics from pool
+    const eliteGenetics = this.geneticPool.getEliteGenetics();
+    const eliteCount = Math.min(eliteGenetics.length, Math.floor(initialOrganisms * 0.3));
+    
+    // Create organisms from genetic pool
+    let organismsCreated = 0;
+    
+    if (useGeneticPool && eliteCount > 0) {
+      // Spawn elite organisms from genetic pool
+      for (let i = 0; i < eliteCount; i++) {
+        const elite = eliteGenetics[i % eliteGenetics.length];
+        const x = Math.random() * this.worldSize.width;
+        const y = Math.random() * this.worldSize.height;
+        
+        const organism = new Organism(x, y, this.topologyEngine);
+        
+        // Apply preserved genetics
+        if (elite.inheritance) {
+          organism.inheritance.decompress(elite.inheritance);
+          organism.generation = elite.generation;
+          organism.applyPhenotype();
+        }
+        
+        this.organisms.push(organism);
+        organismsCreated++;
+      }
+    }
+    
+    // Create remaining organisms randomly
+    for (let i = organismsCreated; i < initialOrganisms; i++) {
       const x = Math.random() * this.worldSize.width;
       const y = Math.random() * this.worldSize.height;
       this.organisms.push(new Organism(x, y, this.topologyEngine));
@@ -87,6 +123,9 @@ export class Simulation {
   
   stop() {
     this.running = false;
+    
+    // Preserve elite organisms before stopping
+    this.geneticPool.preserveEliteOrganisms(this.organisms);
   }
   
   setSpeed(multiplier) {
@@ -112,7 +151,18 @@ export class Simulation {
     this.organisms.forEach(organism => {
       // Let organisms read environmental memory
       const envMemory = this.environmentalField.readEnvironment(organism.position);
-      organism.environmentalMemory = envMemory;
+      
+      // Check if organism is in safe zone
+      const inSafeZone = this.safeZones.some(zone => {
+        const dx = organism.position.x - zone.x;
+        const dy = organism.position.y - zone.y;
+        return Math.sqrt(dx * dx + dy * dy) < zone.radius;
+      });
+      
+      organism.environmentalMemory = {
+        ...envMemory,
+        inSafeZone: inSafeZone
+      };
       
       organism.update(dt, this.nutrients, this.predators);
       
@@ -133,6 +183,7 @@ export class Simulation {
           const offspring = organism.reproduce();
           this.organisms.push(offspring);
           this.statistics.births++;
+          this.birthsSinceLastUpdate++;
         }
       }
     });
@@ -143,13 +194,24 @@ export class Simulation {
     });
     
     // Update predators
+    const newPredators = [];
     this.predators.forEach(predator => {
       predator.update(dt, this.organisms, this.safeZones);
+      
+      // Check predator reproduction
+      if (predator.alive && predator.canReproduce()) {
+        const offspring = predator.reproduce();
+        newPredators.push(offspring);
+      }
     });
+    
+    // Add new predators
+    this.predators.push(...newPredators);
     
     // Handle dead organisms and their memory traces
     const deadOrganisms = this.organisms.filter(o => !o.alive);
     this.statistics.deaths += deadOrganisms.length;
+    this.deathsSinceLastUpdate += deadOrganisms.length;
     
     // Process death traces
     deadOrganisms.forEach(organism => {
@@ -182,6 +244,24 @@ export class Simulation {
       this.spawnNutrient();
     }
     
+    // Check for total extinction
+    if (this.organisms.length === 0) {
+      console.log('🚨 Total extinction detected! Initiating automatic restart...');
+      
+      // Record extinction event
+      this.statistics.extinctionEvents++;
+      
+      // Generate final report before restart
+      const extinctionReport = this.geneticPool.getFormattedReport();
+      console.log('📊 Extinction Report:', extinctionReport);
+      
+      // Preserve genetic pool is already done in stop()
+      
+      // Automatic restart with preserved genetics
+      this.autoRestart();
+      return; // Skip the rest of the update
+    }
+    
     // Maintain minimum population
     if (this.organisms.length < 5) {
       for (let i = 0; i < 5; i++) {
@@ -191,11 +271,36 @@ export class Simulation {
       }
     }
     
-    // Maintain predator population
-    if (this.predators.length < 3 && this.organisms.length > 10) {
-      const x = Math.random() * this.worldSize.width;
-      const y = Math.random() * this.worldSize.height;
-      this.predators.push(new Predator(x, y, this.worldSize));
+    // Maintain predator population - ensure minimum for ecosystem pressure
+    const minPredators = Math.max(5, Math.floor(this.organisms.length / 15)); // More predators
+    const maxPredators = Math.max(10, Math.floor(this.organisms.length / 8)); // Higher max
+    
+    if (this.predators.length < minPredators && this.organisms.length > 5) {
+      // Spawn new predators away from safe zones
+      for (let i = this.predators.length; i < minPredators; i++) {
+        let x, y;
+        let attempts = 0;
+        
+        // Try to spawn away from safe zones
+        do {
+          x = Math.random() * this.worldSize.width;
+          y = Math.random() * this.worldSize.height;
+          attempts++;
+        } while (attempts < 10 && this.safeZones.some(zone => {
+          const dx = x - zone.x;
+          const dy = y - zone.y;
+          return Math.sqrt(dx * dx + dy * dy) < zone.radius + 50;
+        }));
+        
+        this.predators.push(new Predator(x, y, this.worldSize));
+      }
+    }
+    
+    // Limit maximum predators
+    if (this.predators.length > maxPredators) {
+      // Remove weakest predators
+      this.predators.sort((a, b) => a.energy - b.energy);
+      this.predators = this.predators.slice(-maxPredators);
     }
     
     this.updateStatistics();
@@ -262,6 +367,18 @@ export class Simulation {
       this.statistics.average_mutation_rate = 0;
       this.statistics.memory_anchors = 0;
     }
+    
+    // Update genetic pool statistics
+    this.geneticPool.updateStats(
+      this.organisms,
+      this.birthsSinceLastUpdate,
+      this.deathsSinceLastUpdate,
+      this.predators
+    );
+    
+    // Reset counters
+    this.birthsSinceLastUpdate = 0;
+    this.deathsSinceLastUpdate = 0;
   }
   
   getState() {
@@ -273,11 +390,13 @@ export class Simulation {
         color: o.color,
         energy: o.energy,
         age: o.age,
+        maxAge: o.maxAge,
         generation: o.generation,
         organs: o.organs,
         isPanicked: o.isPanicked,
         inheritance: o.inheritance,
-        capabilities: o.capabilities
+        capabilities: o.capabilities,
+        phenotype: o.phenotype
       })),
       nutrients: this.nutrients.map(n => ({
         id: n.id,
@@ -301,5 +420,46 @@ export class Simulation {
       environmentalField: this.environmentalField.getVisualizationData(),
       memoryAnchors: this.environmentalField.memoryAnchors
     };
+  }
+  
+  getSimulationReport() {
+    return this.geneticPool.getFormattedReport();
+  }
+  
+  exportGeneticPool() {
+    return this.geneticPool.exportGeneticData();
+  }
+  
+  importGeneticPool(data) {
+    this.geneticPool.importGeneticData(data);
+  }
+  
+  autoRestart() {
+    console.log('🔄 Auto-restarting simulation with preserved genetics...');
+    
+    // Clear current entities but preserve genetic pool
+    this.organisms = [];
+    this.nutrients = [];
+    this.predators = [];
+    
+    // Clear environmental field
+    this.environmentalField = new EnvironmentalField(this.worldSize);
+    
+    // Re-initialize with more organisms to ensure survival
+    this.initialize({
+      initialOrganisms: 40,  // More than default
+      initialNutrients: 80,  // More nutrients
+      initialPredators: 4,   // Fewer predators initially
+      useGeneticPool: true   // Use preserved genetics
+    });
+    
+    // Log restart info
+    console.log(`✅ Simulation restarted with ${this.organisms.length} organisms from genetic pool`);
+    console.log(`🧬 Genetic pool size: ${this.geneticPool.pool.length}`);
+    
+    // Continue running if it was running before
+    if (this.running) {
+      this.lastUpdate = Date.now();
+    }
   }
 }

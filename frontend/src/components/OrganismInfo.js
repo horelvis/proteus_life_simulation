@@ -2,23 +2,19 @@ import React from 'react';
 import styled from 'styled-components';
 
 const InfoContainer = styled.div`
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
   background-color: var(--bg-primary);
   border-top: 1px solid var(--bg-tertiary);
   padding: 1rem;
-  max-height: 300px;
+  flex: 1;
   overflow-y: auto;
-  animation: slideUp 0.3s ease-out;
+  animation: fadeIn 0.3s ease-out;
   
-  @keyframes slideUp {
+  @keyframes fadeIn {
     from {
-      transform: translateY(100%);
+      opacity: 0;
     }
     to {
-      transform: translateY(0);
+      opacity: 1;
     }
   }
 `;

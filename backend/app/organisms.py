@@ -83,6 +83,8 @@ class WebOrganism:
         # Estado vital
         self.generation = generation
         self.age = 0.0
+        self.max_age = 80 + np.random.random() * 40  # 80-120 unidades como en frontend
+        self.senescence_start_age = self.max_age * 0.6  # Empieza a envejecer al 60%
         self.energy = 0.8  # Empiezan con menos energía
         self.alive = True
         self.death_cause = None
@@ -292,8 +294,17 @@ class WebOrganism:
         # Verificar muerte
         if self.energy <= 0:
             self.die("starvation")
-        elif self.age > 50:  # Vida más corta
+        elif self.age > self.max_age:
             self.die("old_age")
+        
+        # Efectos del envejecimiento (senescencia)
+        if self.age > self.senescence_start_age:
+            aging_factor = (self.age - self.senescence_start_age) / (self.max_age - self.senescence_start_age)
+            # Reducir capacidades gradualmente
+            self.capabilities["motility"] *= (1 - aging_factor * 0.3)
+            self.capabilities["chemotaxis"] *= (1 - aging_factor * 0.2)
+            # Mayor consumo de energía con la edad
+            self.energy -= aging_factor * 0.001
         
         # Guardar posición para trayectoria
         if len(self.trajectory) < 100:
@@ -384,8 +395,8 @@ class WebOrganism:
         # Extraer características topológicas de la trayectoria
         invariants = self._extract_topological_invariants()
         
-        # Mutación base del genoma
-        base_rate = 0.2
+        # Mutación base del genoma (5-15% como en frontend)
+        base_rate = 0.05 + np.random.random() * 0.10
         
         # Modular tasa de mutación según comportamiento topológico
         if invariants['persistence'] > 0.8:
@@ -519,6 +530,16 @@ class WebPredator:
         self.vx = 0.0
         self.vy = 0.0
         
+        # Ciclo de vida finito como en frontend
+        self.age = 0
+        self.max_age = 100 + np.random.random() * 50  # 100-150 unidades
+        self.size = 10  # Tamaño inicial
+        self.energy = 100
+        self.max_energy = 150
+        self.alive = True
+        self.death_cause = None
+        self.successful_hunts = 0
+        
         # Propiedades de ataque mejoradas
         self.light_radius = 80.0  # Mayor alcance
         self.is_attacking = False
@@ -529,9 +550,59 @@ class WebPredator:
         self.target_organism = None
         self.patrol_angle = np.random.random() * 2 * np.pi
         self.hunt_radius = 200  # Radio de búsqueda más amplio
+        
+        # Sistema de memoria como en frontend
+        self.memory = {
+            'last_hunt_position': {'x': x, 'y': y},
+            'time_since_last_hunt': 0,
+            'failed_hunt_attempts': 0,
+            'visited_areas': [],  # Lista de áreas visitadas recientemente
+            'current_patrol_target': None
+        }
+        self.memory_duration = 500  # Tiempo que recuerda las áreas
+        self.area_radius = 100  # Radio de cada área recordada
     
     def update(self, organisms: List[WebOrganism], dt: float, activity_level: float = 1.0):
         """Actualiza el depredador"""
+        if not self.alive:
+            return
+            
+        # Envejecimiento
+        self.age += dt
+        
+        # Consumo de energía base (reducido como en frontend)
+        base_consumption = 0.02 if not self.is_attacking else 0.05
+        self.energy -= base_consumption * dt
+        
+        # Crecimiento con caza exitosa
+        if self.successful_hunts > 0 and self.size < 25:
+            self.size = min(25, 10 + self.successful_hunts * 0.5)
+        
+        # Muerte por edad o hambre
+        if self.age > self.max_age:
+            self.die("old_age")
+            return
+        elif self.energy <= 0:
+            self.die("starvation")
+            return
+        elif self.memory['time_since_last_hunt'] > 1000:
+            # Muerte por hambre prolongada
+            self.die("prolonged_starvation")
+            return
+        
+        # Actualizar memoria
+        self.memory['time_since_last_hunt'] += 1
+        
+        # Limpiar áreas visitadas antiguas
+        self.memory['visited_areas'] = [
+            area for area in self.memory['visited_areas']
+            if area['time'] < self.memory_duration
+        ]
+        
+        # Incrementar tiempo en áreas visitadas
+        for area in self.memory['visited_areas']:
+            area['time'] += 1
+        
         # Reducir cooldown
         if self.attack_cooldown > 0:
             self.attack_cooldown -= 1
@@ -568,12 +639,13 @@ class WebPredator:
                 if closest_dist < self.light_radius * 0.8 and self.attack_cooldown == 0:
                     self.is_attacking = True
                     self.attack_cooldown = 80  # Menos cooldown = más ataques
+                    # Actualizar memoria de caza exitosa
+                    self.memory['last_hunt_position'] = {'x': self.x, 'y': self.y}
+                    self.memory['time_since_last_hunt'] = 0
+                    self.memory['failed_hunt_attempts'] = 0
             else:
-                # Patrullar con velocidad ajustada por actividad
-                self.patrol_angle += np.random.normal(0, 0.15)
-                patrol_speed = 1.2 * activity_level
-                self.vx = np.cos(self.patrol_angle) * patrol_speed
-                self.vy = np.sin(self.patrol_angle) * patrol_speed
+                # Sin presas cerca - usar patrullaje inteligente con memoria
+                self._intelligent_patrol(activity_level)
         
         # Actualizar posición
         self.x += self.vx * dt
@@ -582,3 +654,99 @@ class WebPredator:
         # Fricción
         self.vx *= 0.95
         self.vy *= 0.95
+        
+        # Registrar posición actual si ha pasado suficiente tiempo
+        if len(self.memory['visited_areas']) == 0 or \
+           all(self._distance_to_area({'x': self.x, 'y': self.y}, area) > self.area_radius 
+               for area in self.memory['visited_areas']):
+            self.memory['visited_areas'].append({
+                'x': self.x,
+                'y': self.y,
+                'time': 0
+            })
+    
+    def _intelligent_patrol(self, activity_level: float):
+        """Patrullaje inteligente que evita áreas ya visitadas"""
+        # Si ha pasado mucho tiempo sin cazar, buscar nuevas áreas
+        if self.memory['time_since_last_hunt'] > 200:
+            # Elegir objetivo de patrullaje si no hay uno
+            if not self.memory['current_patrol_target'] or \
+               self._distance_to_area({'x': self.x, 'y': self.y}, self.memory['current_patrol_target']) < 50:
+                # Generar nuevo objetivo evitando áreas visitadas
+                attempts = 0
+                while attempts < 10:
+                    target_x = np.random.uniform(50, 750)  # Evitar bordes
+                    target_y = np.random.uniform(50, 550)
+                    new_target = {'x': target_x, 'y': target_y}
+                    
+                    # Verificar que no esté cerca de áreas visitadas
+                    if all(self._distance_to_area(new_target, area) > self.area_radius * 1.5 
+                           for area in self.memory['visited_areas']):
+                        self.memory['current_patrol_target'] = new_target
+                        break
+                    attempts += 1
+                
+                # Si no encuentra buen objetivo, ir a posición aleatoria
+                if attempts >= 10:
+                    self.memory['current_patrol_target'] = {
+                        'x': np.random.uniform(50, 750),
+                        'y': np.random.uniform(50, 550)
+                    }
+            
+            # Moverse hacia el objetivo
+            if self.memory['current_patrol_target']:
+                dx = self.memory['current_patrol_target']['x'] - self.x
+                dy = self.memory['current_patrol_target']['y'] - self.y
+                norm = np.sqrt(dx**2 + dy**2)
+                
+                if norm > 0:
+                    patrol_speed = 1.5 * activity_level
+                    self.vx = (dx / norm) * patrol_speed
+                    self.vy = (dy / norm) * patrol_speed
+        else:
+            # Patrullaje normal aleatorio
+            self.patrol_angle += np.random.normal(0, 0.15)
+            patrol_speed = 1.2 * activity_level
+            self.vx = np.cos(self.patrol_angle) * patrol_speed
+            self.vy = np.sin(self.patrol_angle) * patrol_speed
+    
+    def _distance_to_area(self, pos1: Dict[str, float], pos2: Dict[str, float]) -> float:
+        """Calcula distancia entre dos posiciones"""
+        return np.sqrt((pos1['x'] - pos2['x'])**2 + (pos1['y'] - pos2['y'])**2)
+    
+    def die(self, cause: str):
+        """Marca al depredador como muerto"""
+        self.alive = False
+        self.death_cause = cause
+        self.is_attacking = False
+    
+    def feed(self, energy_gained: float):
+        """Alimentarse después de caza exitosa"""
+        self.energy = min(self.max_energy, self.energy + energy_gained)
+        self.successful_hunts += 1
+        self.memory['time_since_last_hunt'] = 0
+        
+    def can_reproduce(self) -> bool:
+        """Verifica si puede reproducirse"""
+        return (
+            self.alive and
+            self.age > 20 and
+            self.energy > self.max_energy * 0.8 and
+            self.successful_hunts >= 3
+        )
+    
+    def reproduce(self) -> 'WebPredator':
+        """Crea un descendiente"""
+        # Reducir energía por reproducción
+        self.energy *= 0.6
+        
+        # Crear descendiente cerca
+        offset_x = np.random.uniform(-30, 30)
+        offset_y = np.random.uniform(-30, 30)
+        
+        offspring = WebPredator(self.x + offset_x, self.y + offset_y)
+        # Heredar algunas características
+        offspring.hunt_radius = self.hunt_radius * (0.9 + np.random.random() * 0.2)
+        offspring.light_radius = self.light_radius * (0.9 + np.random.random() * 0.2)
+        
+        return offspring

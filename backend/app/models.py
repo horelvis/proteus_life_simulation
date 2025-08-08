@@ -73,7 +73,7 @@ class SimulationConfig(BaseModel):
     world_size: Tuple[int, int] = (800, 600)
     initial_organisms: int = 50
     initial_predators: int = 5
-    mutation_rate: float = 0.1
+    mutation_rate: float = 0.10  # Increased to match frontend (5-15% range)
     crossover_rate: float = 0.3
     enable_organs: bool = True
     physics_params: Dict[str, float] = {
