@@ -36,11 +36,15 @@ services:
     ports:
       - "3000:80"
     environment:
-      - REACT_APP_BACKEND_URL=http://localhost:8000
-      - REACT_APP_WS_URL=ws://localhost:8000
+      # Use host.docker.internal to allow frontend to connect to backend
+      # For network access, users should set these to their actual IP
+      - REACT_APP_BACKEND_URL=http://host.docker.internal:8000
+      - REACT_APP_WS_URL=ws://host.docker.internal:8000
     depends_on:
       - proteus-backend
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # Servicios originales (legacy)
   proteus:

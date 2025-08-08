@@ -1,0 +1,17 @@
+# Docker Compose Override for Network Access
+# Copy this file to docker-compose.override.yml and update YOUR_LOCAL_IP
+#
+# To find your local IP:
+# - macOS/Linux: ifconfig | grep "inet " | grep -v 127.0.0.1
+# - Windows: ipconfig
+#
+# Example: If your IP is 192.168.1.100, replace YOUR_LOCAL_IP with that
+
+version: '3.8'
+
+services:
+  proteus-frontend:
+    environment:
+      # Replace YOUR_LOCAL_IP with your actual local network IP
+      - REACT_APP_BACKEND_URL=http://YOUR_LOCAL_IP:8000
+      - REACT_APP_WS_URL=ws://YOUR_LOCAL_IP:8000
