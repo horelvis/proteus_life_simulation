@@ -13,9 +13,9 @@ export class Predator {
     this.smoothPosition = { x, y };
     
     // Properties
-    this.baseSize = 8;
+    this.baseSize = 7.2;  // Reduced by 10% from 8
     this.size = this.baseSize;
-    this.maxSize = 15;
+    this.maxSize = 13.5;  // Reduced by 10% from 15
     this.speed = 1.5;
     this.huntRadius = 120; // Increased from 100
     this.attackRadius = 15;

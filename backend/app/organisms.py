@@ -533,7 +533,7 @@ class WebPredator:
         # Ciclo de vida finito como en frontend
         self.age = 0
         self.max_age = 100 + np.random.random() * 50  # 100-150 unidades
-        self.size = 10  # Tamaño inicial
+        self.size = 9  # Tamaño inicial (reducido 10%)
         self.energy = 100
         self.max_energy = 150
         self.alive = True
@@ -576,7 +576,7 @@ class WebPredator:
         
         # Crecimiento con caza exitosa
         if self.successful_hunts > 0 and self.size < 25:
-            self.size = min(25, 10 + self.successful_hunts * 0.5)
+            self.size = min(22.5, 9 + self.successful_hunts * 0.5)  # Reducido 10%
         
         # Muerte por edad o hambre
         if self.age > self.max_age:
