@@ -649,10 +649,10 @@ const SimulationCanvas = ({
 
     // Light flash effect
     if (light_flash > 0) {
-      // Bright flash
+      // Bright white flash
       const flashGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 4);
-      flashGradient.addColorStop(0, `rgba(255, 200, 100, ${light_flash * 0.8})`);
-      flashGradient.addColorStop(0.3, `rgba(255, 150, 50, ${light_flash * 0.4})`);
+      flashGradient.addColorStop(0, `rgba(255, 255, 255, ${light_flash * 0.9})`);
+      flashGradient.addColorStop(0.3, `rgba(240, 240, 255, ${light_flash * 0.5})`);
       flashGradient.addColorStop(1, 'transparent');
       
       ctx.fillStyle = flashGradient;
@@ -661,11 +661,11 @@ const SimulationCanvas = ({
       ctx.fill();
     }
     
-    // Bioluminescent glow based on hunt intensity
+    // Bioluminescent white glow based on hunt intensity
     const glowRadius = size * (1.5 + light_intensity);
     const glowGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, glowRadius);
-    glowGradient.addColorStop(0, `rgba(255, 100, 100, ${light_intensity * 0.6})`);
-    glowGradient.addColorStop(0.5, `rgba(255, 50, 50, ${light_intensity * 0.3})`);
+    glowGradient.addColorStop(0, `rgba(255, 255, 255, ${light_intensity * 0.6})`);
+    glowGradient.addColorStop(0.5, `rgba(220, 220, 255, ${light_intensity * 0.3})`);
     glowGradient.addColorStop(1, 'transparent');
     
     ctx.fillStyle = glowGradient;

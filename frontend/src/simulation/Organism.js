@@ -197,9 +197,14 @@ export class Organism {
     if (predatorThreat) {
       const { predator, distance } = predatorThreat;
       
-      // Panic response based on proximity and vision capability
-      const panicLevel = Math.max(0, 1 - distance / 150);
-      const escapeForce = (0.5 + this.capabilities.vision * 2) * panicLevel * 3;
+      // Panic response based on detection quality
+      // Organisms with better eyes see danger earlier and can escape better
+      const photosensors = this.organs.filter(o => o.type === 'photosensor');
+      const visionQuality = photosensors.reduce((sum, s) => sum + s.functionality, 0);
+      
+      // No eyes = late detection = extreme panic
+      const panicLevel = photosensors.length === 0 ? 1.0 : Math.max(0, 1 - distance / 150);
+      const escapeForce = (0.5 + visionQuality) * panicLevel * 3;
       
       // Enhanced by memory-based fearfulness
       const memoryFear = behavior.cautionLevel;
@@ -376,10 +381,29 @@ export class Organism {
   detectPredatorThreat(predators) {
     if (!predators || predators.length === 0) return null;
     
-    // Detection range depends on vision capability
-    const detectionRange = 50 + this.capabilities.vision * 100;
+    // Find photosensor organs
+    const photosensors = this.organs.filter(o => o.type === 'photosensor');
+    if (photosensors.length === 0) {
+      // NO EYES = NO LIGHT DETECTION
+      // Can only detect by touch/vibration at very close range
+      let touchDetection = null;
+      predators.forEach(predator => {
+        if (!predator.alive) return;
+        const dx = predator.position.x - this.position.x;
+        const dy = predator.position.y - this.position.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        // Only detect by physical proximity
+        if (dist < 15) { // Touch range
+          touchDetection = { predator, distance: dist };
+        }
+      });
+      return touchDetection;
+    }
+    
+    // With photosensors, can detect light flashes
     let closestThreat = null;
-    let minDist = detectionRange;
+    let bestDetection = Infinity;
     
     predators.forEach(predator => {
       if (!predator.alive) return;
@@ -388,15 +412,23 @@ export class Organism {
       const dy = predator.position.y - this.position.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       
-      // Can detect predator if within range
-      if (dist < minDist) {
-        // Better vision = better detection at distance
-        const detectionChance = this.capabilities.vision > 0 ? 
-          1 - (dist / detectionRange) * (1 - this.capabilities.vision) : 
-          dist < 30 ? 1 : 0; // Without vision, only detect very close predators
-        
-        if (Math.random() < detectionChance || dist < 30) {
-          minDist = dist;
+      // Each photosensor contributes to detection
+      let totalDetectionPower = 0;
+      photosensors.forEach(sensor => {
+        // Sensor efficiency decreases with distance
+        const sensorRange = sensor.functionality * 150; // Max 150 units for perfect sensor
+        if (dist < sensorRange) {
+          // Can see the light flash
+          const clarity = 1 - (dist / sensorRange);
+          totalDetectionPower += clarity * sensor.functionality;
+        }
+      });
+      
+      // Multiple sensors improve detection
+      if (totalDetectionPower > 0 && dist < bestDetection) {
+        // Random chance based on sensor quality
+        if (Math.random() < totalDetectionPower) {
+          bestDetection = dist;
           closestThreat = { predator, distance: dist };
         }
       }
