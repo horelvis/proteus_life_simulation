@@ -61,14 +61,14 @@ export class ProteusInheritance {
         baseSensitivity: 0.2 + Math.random() * 0.6,
         baseResilience: 0.4 + Math.random() * 0.4,
         
-        // Mutation rate (drastically increased for rapid evolution)
-        mutability: 0.20 + Math.random() * 0.20  // 20-40% mutation rate for aggressive evolution
+        // Mutation rate - balanced for real evolution
+        mutability: 0.05 + Math.random() * 0.10  // 5-15% mutation rate
       };
     }
     
-    // SIMPLIFIED: Always mutate, let chaos drive evolution
+    // EVOLUTION: Controlled mutations for gradual adaptation
     const core = {};
-    const mutationRate = 0.5; // Fixed high rate
+    const mutationRate = parent1.topologicalCore.mutability; // Use inherited rate (5-15%)
     
     // Copy from parent
     for (const key in parent1.topologicalCore) {
@@ -78,17 +78,9 @@ export class ProteusInheritance {
         core[key] = parent1.topologicalCore[key];
       }
       
-      // ALWAYS mutate something
+      // Mutate based on mutation rate
       if (Math.random() < mutationRate) {
-        const oldValue = core[key];
         core[key] = this.mutateParameter(key, core[key]);
-        
-        // Sometimes do EXTREME mutations
-        if (Math.random() < 0.1) {
-          if (typeof core[key] === 'number') {
-            core[key] = Math.random(); // Complete randomization
-          }
-        }
       }
     }
     
@@ -283,21 +275,33 @@ export class ProteusInheritance {
       foraging: memoryInfluence.forageIntensity,
       sociability: memoryInfluence.socialAttraction,
       
-      // SIMPLIFIED: All organs always have some expression, let selection decide
+      // REAL EVOLUTION: Organ expression from inherited genes
       organExpressions: {
-        photosensor: Math.random(),
-        chemoreceptor: Math.random(),
-        flagellum: Math.random(),
-        membrane: Math.random(),
-        vacuole: Math.random(),
-        toxin_gland: Math.random(),
-        armor_plates: Math.random(),
-        speed_boost: Math.random(),
-        // Add even more random organs
-        electric_organ: Math.random(),
-        regeneration: Math.random(),
-        camouflage: Math.random(),
-        pheromone_emitter: Math.random()
+        // Sensory organs from sensitivity gene
+        photosensor: core.baseSensitivity * (1 + memoryInfluence.cautionLevel * 0.3),
+        chemoreceptor: core.baseSensitivity * (1 + memoryInfluence.forageIntensity * 0.3),
+        
+        // Movement organs from motility gene
+        flagellum: core.baseMotility,
+        speed_boost: core.baseMotility > 0.7 ? (core.baseMotility - 0.5) * 2 : 0,
+        
+        // Defense organs from resilience gene
+        membrane: core.baseResilience,
+        armor_plates: core.baseResilience > 0.6 ? (core.baseResilience - 0.4) * 2 : 0,
+        toxin_gland: core.baseResilience > 0.7 ? (core.baseResilience - 0.5) * 2 : 0,
+        
+        // Special organs emerge from high trait combinations
+        electric_organ: (core.baseMotility > 0.6 && core.baseResilience > 0.6) ? 
+          (core.baseMotility + core.baseResilience - 1.0) : 0,
+        
+        regeneration: core.baseResilience > 0.8 ? (core.baseResilience - 0.6) * 2 : 0,
+        
+        camouflage: (core.baseSensitivity > 0.5 && core.baseResilience > 0.5) ?
+          (core.baseSensitivity + core.baseResilience - 0.8) * 0.5 : 0,
+          
+        vacuole: 0.3 + core.baseResilience * 0.4,
+        
+        pheromone_emitter: core.baseSensitivity > 0.6 ? core.baseSensitivity * 0.5 : 0
       }
     };
   }

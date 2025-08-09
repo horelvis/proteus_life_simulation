@@ -262,18 +262,12 @@ export class Simulation {
       return; // Skip the rest of the update
     }
     
-    // Maintain minimum population
-    if (this.organisms.length < 5) {
-      for (let i = 0; i < 5; i++) {
-        const x = Math.random() * this.worldSize.width;
-        const y = Math.random() * this.worldSize.height;
-        this.organisms.push(new Organism(x, y, this.topologyEngine));
-      }
-    }
+    // Let natural selection work - no artificial population maintenance
+    // If population drops too low, extinction is a valid outcome
     
-    // Maintain predator population - ensure minimum for ecosystem pressure
-    const minPredators = Math.max(5, Math.floor(this.organisms.length / 15)); // More predators
-    const maxPredators = Math.max(10, Math.floor(this.organisms.length / 8)); // Higher max
+    // Predator population scales with prey - natural balance
+    const minPredators = Math.max(2, Math.floor(this.organisms.length / 20)); 
+    const maxPredators = Math.max(4, Math.floor(this.organisms.length / 10));
     
     if (this.predators.length < minPredators && this.organisms.length > 5) {
       // Spawn new predators away from safe zones
