@@ -1,5 +1,7 @@
 # Backend Python para PROTEUS-AC ARC Solver
 
+**⚠️ EXPERIMENTAL**: Este backend incluye implementaciones experimentales de PROTEUS basadas en dinámicas topológicas. Los solvers PROTEUS muestran ~44% de precisión en puzzles simples comparado con 100% de métodos basados en reglas.
+
 Sistema de resolución de puzzles ARC con transparencia total, implementado en Python con comunicación WebSocket.
 
 ## 🚀 Instalación

@@ -126,7 +126,8 @@ class TopologyEngine:
         
         self.time += 1
     
-    def extract_topological_features(self, trajectory: List[np.ndarray]) -> Dict:
+    @staticmethod
+    def extract_topological_features(trajectory: List[np.ndarray]) -> Dict:
         """
         Extrae características topológicas de una trayectoria
         Estas son las "memorias" que se heredan

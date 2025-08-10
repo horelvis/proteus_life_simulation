@@ -2,14 +2,22 @@
 """
 PROTEUS-ARC: Topological Dynamics Solver for ARC Puzzles
 Basado en los principios del paper PROTEUS - sin redes neuronales
+
+ADVERTENCIA: Esta es una implementación EXPERIMENTAL con fines de investigación.
+No se garantiza un rendimiento superior a métodos tradicionales.
+Actualmente muestra ~44% accuracy en puzzles simples vs 100% con reglas fijas.
 """
 
 import numpy as np
 from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass
 import json
+import logging
 from scipy.fft import fft2, ifft2
 from scipy.ndimage import gaussian_filter
+from scipy.signal import correlate2d
+
+logger = logging.getLogger(__name__)
 
 # Constantes del sistema PROTEUS
 HOLOGRAPHIC_MEMORY_SIZE = 2000  # 8KB como en el paper
@@ -45,40 +53,101 @@ class HolographicMemory:
         # M[k] = Σᵢ FFT(T)[i] × exp(iφᵢₖ)
         fft_trajectory = fft2(trajectory)
         
-        for k in range(min(self.size, fft_trajectory.shape[0])):
+        # Limitar el tamaño para evitar problemas con arrays pequeños
+        max_k = min(self.size, fft_trajectory.shape[0], fft_trajectory.shape[1])
+        
+        for k in range(max_k):
             phase = np.random.uniform(0, 2*np.pi)
-            self.memory_field[k] += fft_trajectory.flatten()[k] * np.exp(1j * phase)
+            if k < fft_trajectory.size:
+                self.memory_field[k, k] += fft_trajectory.flat[k] * np.exp(1j * phase)
         
         self.experience_count += 1
+        
+        # NUEVO: Normalizar para evitar crecimiento ilimitado
+        if self.experience_count % 10 == 0:  # Normalizar cada 10 experiencias
+            max_magnitude = np.max(np.abs(self.memory_field))
+            if max_magnitude > 1.0:
+                self.memory_field = self.memory_field / max_magnitude
+                logger.debug(f"Memoria normalizada, magnitud máxima era {max_magnitude:.2f}")
     
     def recall(self, partial_input: np.ndarray = None) -> np.ndarray:
         """Recupera información incluso con 50% de corrupción"""
         if partial_input is None:
             # Reconstrucción estadística
-            return np.real(ifft2(self.memory_field[:32, :32]))
+            size = min(32, self.memory_field.shape[0])
+            return np.real(ifft2(self.memory_field[:size, :size]))
         
-        # Reconstrucción guiada por entrada parcial
+        # NUEVO: Usar correlación 2D para mejor coincidencia de patrones
+        from scipy.signal import correlate2d
+        
+        # Preparar entrada para correlación
         fft_input = fft2(partial_input)
-        correlation = np.correlate(self.memory_field.flatten(), fft_input.flatten(), mode='same')
+        input_magnitude = np.abs(fft_input)
         
-        # Recuperar patrón más correlacionado
-        best_match_idx = np.argmax(np.abs(correlation))
-        return np.real(ifft2(self.memory_field[best_match_idx:best_match_idx+32]))
+        # Normalizar entrada
+        if np.max(input_magnitude) > 0:
+            input_magnitude = input_magnitude / np.max(input_magnitude)
+        
+        # Correlación 2D con campo de memoria
+        memory_magnitude = np.abs(self.memory_field[:input_magnitude.shape[0], :input_magnitude.shape[1]])
+        
+        # Normalizar campo de memoria para correlación
+        if np.max(memory_magnitude) > 0:
+            memory_magnitude = memory_magnitude / np.max(memory_magnitude)
+        
+        # Calcular correlación 2D
+        correlation = correlate2d(memory_magnitude, input_magnitude, mode='same')
+        
+        # Encontrar mejor coincidencia
+        best_match = np.unravel_index(np.argmax(correlation), correlation.shape)
+        
+        # Reconstruir desde la mejor posición
+        y, x = best_match
+        size = min(partial_input.shape[0], self.memory_field.shape[0] - y)
+        
+        if size > 0:
+            return np.real(ifft2(self.memory_field[y:y+size, x:x+size]))
+        else:
+            return np.zeros_like(partial_input)
 
 class TopologicalField:
     """Campo topológico continuo para computación"""
     
-    def __init__(self, shape: Tuple[int, int]):
+    def __init__(self, shape: Tuple[int, int], sigma: Optional[float] = None, decay_rate: Optional[float] = None):
         self.shape = shape
         # Φ: ℝ² → ℝ
         self.potential = np.zeros(shape)
         self.gradient = np.zeros(shape + (2,))
         self.curvature = np.zeros(shape)
         
+        # NUEVO: Parámetros adaptables según el tamaño del puzzle
+        # Sigma para filtro gaussiano - escala con el tamaño
+        if sigma is None:
+            # Adaptar sigma al tamaño: puzzles más grandes necesitan sigma mayor
+            min_dimension = min(shape)
+            self.sigma = max(0.5, min(3.0, min_dimension / 10.0))
+        else:
+            self.sigma = sigma
+            
+        # Tasa de decaimiento - puzzles más grandes decaen más lento
+        if decay_rate is None:
+            # Ajustar decay según área del puzzle
+            area = shape[0] * shape[1]
+            if area < 100:
+                self.decay_rate = 0.95  # Decay rápido para puzzles pequeños
+            elif area < 400:
+                self.decay_rate = 0.97  # Decay medio
+            else:
+                self.decay_rate = 0.98  # Decay lento para puzzles grandes
+        else:
+            self.decay_rate = decay_rate
+            
+        logger.debug(f"Campo topológico inicializado: shape={shape}, sigma={self.sigma:.2f}, decay={self.decay_rate:.3f}")
+        
     def update(self, organisms: List['ProteusOrganism'], external_field: np.ndarray = None):
         """Actualiza el campo según la ecuación ∂Φ/∂t = ∇²Φ + R + D"""
-        # Difusión
-        self.potential = gaussian_filter(self.potential, sigma=1.0) * FIELD_DECAY_RATE
+        # Difusión con parámetros adaptables
+        self.potential = gaussian_filter(self.potential, sigma=self.sigma) * self.decay_rate
         
         # Contribución de organismos (R)
         for org in organisms:
@@ -91,7 +160,9 @@ class TopologicalField:
         
         # Campo externo (D) - puzzles ARC
         if external_field is not None:
-            self.potential += external_field * 0.1
+            # Aplicar saturación para evitar desbordamiento
+            field_contribution = external_field * 0.1
+            self.potential = np.clip(self.potential + field_contribution, -10.0, 10.0)
         
         # Calcular gradiente para fuerzas
         self.gradient[:, :, 0] = np.gradient(self.potential, axis=0)
@@ -233,9 +304,9 @@ class ProteusOrganism:
         return [components, holes, 0]
     
     def _count_components(self, binary_grid: np.ndarray) -> int:
-        """Cuenta componentes conectados"""
-        from scipy.ndimage import label
-        labeled, num_features = label(binary_grid)
+        """Cuenta componentes conectados usando scipy.ndimage"""
+        from scipy import ndimage
+        labeled, num_features = ndimage.label(binary_grid)
         return num_features
     
     def _count_holes(self, grid: np.ndarray) -> int:
@@ -257,12 +328,16 @@ class ProteusOrganism:
 class ProteusARCSolver:
     """Solver ARC basado en principios PROTEUS"""
     
-    def __init__(self, population_size: int = 50):
+    def __init__(self, population_size: int = 50, seed: Optional[int] = None):
         self.population_size = population_size
         self.organisms = []
         self.field = None
         self.generation = 0
         self.generation_limit = 100  # Límite de generaciones configurable
+        
+        # Control de aleatoriedad para reproducibilidad
+        self.seed = seed
+        self.rng = np.random.default_rng(seed)
         
     def solve(self, train_examples: List[Dict], test_input: np.ndarray) -> np.ndarray:
         """Resuelve usando evolución topológica sin fitness functions"""
@@ -418,8 +493,35 @@ class ProteusARCSolver:
         return value
     
     def _topological_fitness(self, solution: np.ndarray, examples: List[Dict]) -> float:
-        """Evalúa fitness basado en propiedades topológicas"""
-        fitness = 0.0
+        """Evalúa fitness basado en acierto de celdas y propiedades topológicas"""
+        if solution is None or len(examples) == 0:
+            return 0.0
+            
+        total_fitness = 0.0
+        weights_sum = 0.0
+        
+        # NUEVO: Componente principal - Acierto directo de celdas (70% del peso)
+        cell_accuracy_scores = []
+        
+        for example in examples:
+            # Si podemos comparar directamente con los outputs esperados
+            output_expected = np.array(example['output'])
+            
+            if solution.shape == output_expected.shape:
+                # Calcular precisión a nivel de celda
+                matching_cells = np.sum(solution == output_expected)
+                total_cells = output_expected.size
+                cell_accuracy = matching_cells / total_cells
+                cell_accuracy_scores.append(cell_accuracy)
+        
+        if cell_accuracy_scores:
+            avg_cell_accuracy = np.mean(cell_accuracy_scores)
+            total_fitness += avg_cell_accuracy * 0.7
+            weights_sum += 0.7
+            logger.debug(f"Precisión promedio de celdas: {avg_cell_accuracy:.2%}")
+        
+        # Componente secundario - Propiedades topológicas (30% del peso)
+        topology_scores = []
         
         for example in examples:
             # Comparar propiedades topológicas
@@ -427,11 +529,34 @@ class ProteusARCSolver:
             output_dim = self._estimate_fractal_dimension(np.array(example['output']))
             solution_dim = self._estimate_fractal_dimension(solution)
             
-            # La solución debe preservar relaciones dimensionales
-            expected_dim = solution_dim + (output_dim - input_dim)
-            fitness += 1.0 / (1.0 + abs(expected_dim - solution_dim))
+            # Evaluar preservación de transformación dimensional
+            input_to_output_change = output_dim - input_dim
+            expected_solution_dim = solution_dim  # Para el test
+            actual_change = solution_dim - self._estimate_fractal_dimension(np.array(example['input']))
+            
+            # Penalizar diferencias en la transformación
+            dimension_error = abs(actual_change - input_to_output_change)
+            dimension_score = 1.0 / (1.0 + dimension_error)
+            
+            # También considerar consistencia de colores
+            output_colors = set(np.unique(output_expected))
+            solution_colors = set(np.unique(solution))
+            color_overlap = len(output_colors.intersection(solution_colors)) / max(len(output_colors), 1)
+            
+            # Combinar scores topológicos
+            topology_score = 0.7 * dimension_score + 0.3 * color_overlap
+            topology_scores.append(topology_score)
         
-        return fitness / len(examples)
+        if topology_scores:
+            avg_topology_score = np.mean(topology_scores)
+            total_fitness += avg_topology_score * 0.3
+            weights_sum += 0.3
+        
+        # Normalizar por pesos totales
+        if weights_sum > 0:
+            return total_fitness / weights_sum
+        else:
+            return 0.0
     
     def _estimate_fractal_dimension(self, grid: np.ndarray) -> float:
         """Estima dimensión fractal para fitness"""

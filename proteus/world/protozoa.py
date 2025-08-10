@@ -230,6 +230,5 @@ class Protozoa:
             return {}
             
         return TopologyEngine.extract_topological_features(
-            None,  # Self parameter not needed for static method
             self.state.trajectory_history
         )

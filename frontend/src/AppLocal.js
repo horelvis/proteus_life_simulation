@@ -256,7 +256,19 @@ function AppLocal() {
   const handleSpawnOrganism = (x, y) => {
     if (simulationRef.current && status === 'running') {
       // Spawn a new organism at the clicked position
-      simulationRef.current.addOrganism(x, y);
+      const newOrganism = simulationRef.current.addOrganism(x, y);
+      
+      // Update simulation state to reflect the new organism
+      if (newOrganism) {
+        setSimulationState(prevState => ({
+          ...prevState,
+          organisms: [...(prevState?.organisms || []), newOrganism],
+          statistics: {
+            ...prevState?.statistics,
+            organismCount: (prevState?.statistics?.organismCount || 0) + 1
+          }
+        }));
+      }
     }
   };
 

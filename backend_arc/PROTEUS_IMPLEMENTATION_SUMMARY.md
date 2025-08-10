@@ -1,5 +1,15 @@
 # 📊 Resumen de Implementación PROTEUS para ARC
 
+## ⚠️ ADVERTENCIA: IMPLEMENTACIÓN EXPERIMENTAL
+
+**IMPORTANTE**: La implementación PROTEUS es altamente experimental y no debe considerarse como una solución probada o confiable para resolver puzzles ARC. Los resultados actuales muestran:
+
+- **Accuracy en puzzles simples**: ~44% (significativamente inferior a métodos basados en reglas)
+- **Velocidad**: >100x más lento que enfoques tradicionales
+- **Estabilidad**: Variable y dependiente de hiperparámetros
+
+Esta implementación es principalmente para investigación y exploración de conceptos topológicos en IA.
+
 ## Lo que hemos logrado
 
 ### 1. **Solver PROTEUS Topológico** (`proteus_arc_solver.py`)

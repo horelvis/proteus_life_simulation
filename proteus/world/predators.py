@@ -37,6 +37,7 @@ class LuminousPredator:
         
         # Estado
         self.is_attacking = False
+        self.is_luring = False  # Para subclases que usen señuelos
         self.hunting_mode = "patrol"  # "patrol" o "pursuit"
         self.target = None
         self.age = 0

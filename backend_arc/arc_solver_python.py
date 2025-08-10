@@ -52,27 +52,51 @@ class ARCSolverPython:
         self.razonamiento_pasos = []
         self.verificar_reglas = True  # Verificar que las reglas funcionen con ejemplos
         
+        # NUEVO: Orden personalizado de prioridad de reglas
+        self.custom_rule_order = None  # List[TransformationType] o None para usar orden por defecto
+        
+    def set_rule_priority(self, order: List[TransformationType]):
+        """Establece un orden personalizado de prioridad para la detección de reglas"""
+        self.custom_rule_order = order
+        logger.info(f"Orden de reglas personalizado establecido: {[r.value for r in order[:3]]}...")
+        
     def detect_rule(self, input_grid: np.ndarray, output_grid: np.ndarray) -> Optional[Dict[str, Any]]:
         """Detecta la regla de transformación entre input y output"""
         
-        # Verificar cada tipo de transformación
-        # Orden importante: más específicos primero para evitar falsos positivos
-        detectors = [
-            # Transformaciones de tamaño primero
-            (self._detect_pattern_replication, TransformationType.PATTERN_REPLICATION),
-            (self._detect_counting, TransformationType.COUNTING),
-            (self._detect_symmetry, TransformationType.SYMMETRY_DETECTION),
-            (self._detect_pattern_extraction, TransformationType.PATTERN_EXTRACTION),
-            # Transformaciones geométricas
-            (self._detect_rotation, TransformationType.ROTATION),
-            (self._detect_reflection, TransformationType.REFLECTION),
-            (self._detect_gravity, TransformationType.GRAVITY),
-            # Transformaciones de contenido
-            (self._detect_fill_shape, TransformationType.FILL_SHAPE),
-            (self._detect_line_drawing, TransformationType.LINE_DRAWING),
-            # Color mapping al final (más general)
-            (self._detect_color_mapping, TransformationType.COLOR_MAPPING)
-        ]
+        # Mapa de detectores
+        detector_map = {
+            TransformationType.PATTERN_REPLICATION: self._detect_pattern_replication,
+            TransformationType.COUNTING: self._detect_counting,
+            TransformationType.SYMMETRY_DETECTION: self._detect_symmetry,
+            TransformationType.PATTERN_EXTRACTION: self._detect_pattern_extraction,
+            TransformationType.ROTATION: self._detect_rotation,
+            TransformationType.REFLECTION: self._detect_reflection,
+            TransformationType.GRAVITY: self._detect_gravity,
+            TransformationType.FILL_SHAPE: self._detect_fill_shape,
+            TransformationType.LINE_DRAWING: self._detect_line_drawing,
+            TransformationType.COLOR_MAPPING: self._detect_color_mapping
+        }
+        
+        # Usar orden personalizado si existe, sino usar orden por defecto
+        if self.custom_rule_order:
+            rule_order = self.custom_rule_order
+        else:
+            # Orden por defecto optimizado
+            rule_order = [
+                TransformationType.PATTERN_REPLICATION,
+                TransformationType.COUNTING,
+                TransformationType.SYMMETRY_DETECTION,
+                TransformationType.PATTERN_EXTRACTION,
+                TransformationType.ROTATION,
+                TransformationType.REFLECTION,
+                TransformationType.GRAVITY,
+                TransformationType.FILL_SHAPE,
+                TransformationType.LINE_DRAWING,
+                TransformationType.COLOR_MAPPING
+            ]
+        
+        # Construir lista de detectores según el orden
+        detectors = [(detector_map[rule_type], rule_type) for rule_type in rule_order if rule_type in detector_map]
         
         for detector, transform_type in detectors:
             result = detector(input_grid, output_grid)
@@ -108,6 +132,11 @@ class ARCSolverPython:
         """Resuelve el puzzle y devuelve los pasos de razonamiento"""
         self.reasoning_steps = []
         self.razonamiento_pasos = []  # Sistema transparente
+        self.confidence = 0.0  # Reiniciar confianza
+        
+        # Contadores para calcular confianza
+        self.rules_tested = 0
+        self.rules_successful = 0
         
         # Paso 1: Analizar ejemplos de entrenamiento
         self.reasoning_steps.append({
@@ -116,10 +145,10 @@ class ARCSolverPython:
             'details': f'Procesando {len(train_examples)} ejemplos'
         })
         
-        # Log detallado como en JS
-        logger.info(f"📚 Analizando {len(train_examples)} ejemplos de entrenamiento...")
+        # Detailed logging
+        logger.info(f"Analyzing {len(train_examples)} training examples...")
         for idx, ejemplo in enumerate(train_examples):
-            logger.info(f"   Ejemplo {idx + 1}: shape {np.array(ejemplo['input']).shape}")
+            logger.info(f"   Example {idx + 1}: shape {np.array(ejemplo['input']).shape}")
             
         self.razonamiento_pasos.append({
             'tipo': 'inicio_analisis',
@@ -150,8 +179,16 @@ class ARCSolverPython:
             output_grid = np.array(example['output'])
             
             rule = self.detect_rule(input_grid, output_grid)
+            self.rules_tested += 1
+            
             if rule:
                 detected_rules.append(rule)
+                
+                # Verificar si la regla funciona correctamente
+                test_output = self.apply_rule(rule, input_grid)
+                if np.array_equal(test_output, output_grid):
+                    self.rules_successful += 1
+                
                 if idx < len(train_examples):  # Solo mostrar ejemplos originales
                     self.reasoning_steps.append({
                         'type': 'rule_detection',
@@ -186,6 +223,24 @@ class ARCSolverPython:
         
         # Registrar pasos de aplicación
         self._generate_application_steps(best_rule, test_input, solution)
+        
+        # Calcular confianza final
+        if self.rules_tested > 0:
+            self.confidence = self.rules_successful / self.rules_tested
+        else:
+            self.confidence = 0.0
+            
+        # Ajustar confianza por la confianza de la regla seleccionada
+        self.confidence = self.confidence * best_rule.get('confidence', 1.0)
+        
+        # Añadir información de confianza a los pasos
+        self.reasoning_steps.append({
+            'type': 'confidence_calculation',
+            'description': f'Confianza final: {self.confidence:.2%}',
+            'details': f'{self.rules_successful}/{self.rules_tested} reglas funcionaron correctamente'
+        })
+        
+        logger.info(f"Final solver confidence: {self.confidence:.2%}")
         
         return solution, self.reasoning_steps
     

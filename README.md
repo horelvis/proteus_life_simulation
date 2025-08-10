@@ -1,5 +1,7 @@
 # 🧬 PROTEUS - Life Simulation with Real Evolution
 
+**⚠️ EXPERIMENTAL RESEARCH PROJECT**: PROTEUS is a highly experimental system exploring novel computational paradigms inspired by topological dynamics. Performance and stability are not guaranteed. Use for research purposes only.
+
 PROTEUS is an advanced artificial life simulation where organisms evolve through natural selection without any parametrization. The system implements real physics, chemistry, and biology to enable the emergence of complex multicellular life from simple unicellular organisms.
 
 ## 🚀 Quick Start

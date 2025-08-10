@@ -7,6 +7,12 @@
 
 ---
 
+## ⚠️ EXPERIMENTAL RESEARCH PROJECT
+
+**WARNING**: PROTEUS is a highly experimental research project exploring alternative computational paradigms. The implementation is not production-ready and should be used only for research purposes. Current performance metrics on ARC puzzles show ~44% accuracy compared to 100% with traditional rule-based approaches.
+
+---
+
 > **"Las neuronas artificiales son una muleta histórica. Aquí hay una forma completamente diferente de crear sistemas que computan y aprenden."**
 
 ## 🎯 Manifiesto
