@@ -94,5 +94,6 @@ services:
     command: python main.py evolve -g 10 -p 50 -d 5 -t 500
 
 networks:
-  default:
+  proteus-net:
+    driver: bridge
     name: proteus-network
