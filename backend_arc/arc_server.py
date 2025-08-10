@@ -15,6 +15,7 @@ import numpy as np
 from arc_solver_python import ARCSolverPython
 from arc_visualizer import ARCVisualizer
 from arc_dataset_loader import ARCDatasetLoader
+from arc_swarm_solver import ARCSwarmSolver
 
 # Configurar logging
 logging.basicConfig(
@@ -85,6 +86,8 @@ class ARCWebSocketServer:
                 await self.handle_load_puzzles(websocket, data)
             elif msg_type == 'solve_puzzle':
                 await self.handle_solve_puzzle(websocket, data)
+            elif msg_type == 'solve_with_swarm':
+                await self.handle_solve_with_swarm(websocket, data)
             elif msg_type == 'get_reasoning_steps':
                 await self.handle_get_reasoning_steps(websocket, data)
             elif msg_type == 'verify_integrity':
@@ -349,6 +352,72 @@ class ARCWebSocketServer:
                 'passed': False,
                 'error': str(e)
             }
+    
+    async def handle_solve_with_swarm(self, websocket, data: Dict[str, Any]):
+        """Resuelve un puzzle usando el enjambre con votación"""
+        puzzle_id = data.get('puzzle_id')
+        puzzle_data = data.get('puzzle')
+        swarm_config = data.get('swarm_config', {})
+        
+        if not puzzle_data:
+            await self.send_message(websocket, {
+                'type': 'error',
+                'message': 'No se proporcionó puzzle'
+            })
+            return
+            
+        # Notificar inicio
+        await self.send_message(websocket, {
+            'type': 'swarm_start',
+            'puzzle_id': puzzle_id,
+            'message': f'🐝 Iniciando enjambre para {puzzle_id}'
+        })
+        
+        # Crear enjambre con configuración personalizada
+        swarm = ARCSwarmSolver(
+            population_size=swarm_config.get('population_size', 20),
+            generations=swarm_config.get('generations', 5),
+            mutation_rate=swarm_config.get('mutation_rate', 0.2)
+        )
+        
+        # Resolver con enjambre
+        test_input = np.array(puzzle_data['test'][0]['input'])
+        solution, report = swarm.solve_with_swarm(
+            puzzle_data['train'],
+            test_input
+        )
+        
+        # Enviar actualizaciones de progreso
+        for vote in report['voting_history']:
+            await self.send_message(websocket, {
+                'type': 'swarm_generation',
+                'puzzle_id': puzzle_id,
+                'generation': vote['generation'] + 1,
+                'votes': vote['votes'],
+                'fitness': vote['fitness'],
+                'agents': vote['agents']
+            })
+            await asyncio.sleep(0.2)  # Pequeña pausa para visualización
+        
+        # Verificar si es correcto (si tenemos la respuesta)
+        is_correct = False
+        expected = None
+        if 'output' in puzzle_data['test'][0]:
+            expected = np.array(puzzle_data['test'][0]['output'])
+            is_correct = np.array_equal(solution, expected)
+        
+        # Enviar resultado final
+        await self.send_message(websocket, {
+            'type': 'swarm_complete',
+            'puzzle_id': puzzle_id,
+            'solution': solution.tolist() if solution is not None else None,
+            'expected': expected.tolist() if expected is not None else None,
+            'is_correct': is_correct,
+            'fitness': report['fitness'],
+            'alive_agents': report['alive_agents'],
+            'dead_agents': report['dead_agents'],
+            'best_agents': report['best_agents']
+        })
             
     async def client_handler(self, websocket, path):
         """Maneja la conexión de un cliente"""

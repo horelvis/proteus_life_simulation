@@ -48,6 +48,10 @@ class ARCSolverPython:
         self.augmenter = ARCAugmentation()
         self.use_augmentation = True
         
+        # Sistema de razonamiento transparente (migrado de JS)
+        self.razonamiento_pasos = []
+        self.verificar_reglas = True  # Verificar que las reglas funcionen con ejemplos
+        
     def detect_rule(self, input_grid: np.ndarray, output_grid: np.ndarray) -> Optional[Dict[str, Any]]:
         """Detecta la regla de transformación entre input y output"""
         
@@ -73,23 +77,54 @@ class ARCSolverPython:
         for detector, transform_type in detectors:
             result = detector(input_grid, output_grid)
             if result is not None:
-                return {
+                rule = {
                     'type': transform_type.value,
                     'confidence': result['confidence'],
                     'parameters': result.get('parameters', {})
                 }
+                
+                # Verificar que la regla funciona (migrado de JS)
+                if self.verificar_reglas:
+                    test_output = self.apply_rule(rule, input_grid)
+                    funciona_bien = np.array_equal(test_output, output_grid)
+                    
+                    self.razonamiento_pasos.append({
+                        'tipo': 'verificacion_regla',
+                        'regla': transform_type.value,
+                        'funciona': funciona_bien,
+                        'confianza': result['confidence']
+                    })
+                    
+                    if not funciona_bien:
+                        logger.info(f"Regla {transform_type.value} detectada pero no replica exactamente el output")
+                        # Reducir confianza si no funciona perfectamente
+                        rule['confidence'] *= 0.8
+                
+                return rule
                 
         return None
         
     def solve_with_steps(self, train_examples: List[Dict], test_input: np.ndarray) -> Tuple[np.ndarray, List[Dict]]:
         """Resuelve el puzzle y devuelve los pasos de razonamiento"""
         self.reasoning_steps = []
+        self.razonamiento_pasos = []  # Sistema transparente
         
         # Paso 1: Analizar ejemplos de entrenamiento
         self.reasoning_steps.append({
             'type': 'analysis',
             'description': 'Analizando ejemplos de entrenamiento...',
             'details': f'Procesando {len(train_examples)} ejemplos'
+        })
+        
+        # Log detallado como en JS
+        logger.info(f"📚 Analizando {len(train_examples)} ejemplos de entrenamiento...")
+        for idx, ejemplo in enumerate(train_examples):
+            logger.info(f"   Ejemplo {idx + 1}: shape {np.array(ejemplo['input']).shape}")
+            
+        self.razonamiento_pasos.append({
+            'tipo': 'inicio_analisis',
+            'num_ejemplos': len(train_examples),
+            'descripcion': f'Iniciando análisis de {len(train_examples)} ejemplos'
         })
         
         # Aplicar aumentación si está habilitada
