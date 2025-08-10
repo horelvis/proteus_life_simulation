@@ -4,7 +4,7 @@ Test específico para pattern replication
 """
 
 import numpy as np
-from arc_solver_python import ARCSolverPython
+from arc.arc_solver_python import ARCSolverPython
 
 def test_pattern_replication():
     print("🧪 Testing Pattern Replication Detection and Application\n")

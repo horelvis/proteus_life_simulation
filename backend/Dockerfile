@@ -24,8 +24,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the proteus module and scripts
+# Copy all modules and scripts
 COPY proteus /app/proteus
+COPY app /app/app
+COPY arc /app/arc
 COPY *.py /app/
 
 # Environment variables
@@ -34,11 +36,11 @@ ENV PYTHONUNBUFFERED=1
 # Use virtual display for headless OpenGL
 ENV DISPLAY=:99
 
-# Expose port for WebSocket/API
-EXPOSE 8000
+# Expose ports for both servers
+EXPOSE 8000 8765
 
-# Create entrypoint script for xvfb
-RUN echo '#!/bin/bash\nXvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &\nsleep 2\npython run_server.py' > /app/entrypoint.sh && \
+# Create entrypoint script for xvfb and unified server
+RUN echo '#!/bin/bash\nXvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &\nsleep 2\npython unified_server.py' > /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh
 
 # Run with virtual display

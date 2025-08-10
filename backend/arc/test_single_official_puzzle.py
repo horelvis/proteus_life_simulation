@@ -4,8 +4,8 @@ Test con un solo puzzle oficial para debug
 """
 
 import numpy as np
-from arc_solver_python import ARCSolverPython
-from arc_official_loader import ARCOfficialLoader
+from arc.arc_solver_python import ARCSolverPython
+from arc.arc_official_loader import ARCOfficialLoader
 
 def test_single_puzzle():
     print("🧪 Probando con puzzle oficial simple...\n")

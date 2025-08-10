@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Tuple
 from dataclasses import dataclass
 from scipy.ndimage import label, gaussian_filter
 
-from arc_solver_python import ARCSolverPython, TransformationType
+from arc.arc_solver_python import ARCSolverPython, TransformationType
 
 @dataclass
 class TopologicalSignature:

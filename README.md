@@ -6,16 +6,26 @@ PROTEUS is an advanced artificial life simulation where organisms evolve through
 
 ## 🚀 Quick Start
 
-### Backend (Python + Docker)
+### Unified Backend (Python)
+
+All backend functionality is now unified in a single Python server:
 
 ```bash
 cd backend
-docker compose up
+
+# Option 1: Quick start with script
+./start_unified.sh
+
+# Option 2: Manual start
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+python3 unified_server.py
 ```
 
-The backend API will be available at [http://localhost:8000](http://localhost:8000).
-
-For ARC solver mode, the WebSocket server runs on [ws://localhost:8765](ws://localhost:8765).
+This starts both servers:
+- **FastAPI Server**: [http://localhost:8000](http://localhost:8000) - Main simulation API
+- **WebSocket Server**: [ws://localhost:8765](ws://localhost:8765) - ARC solver interface
 
 ### Frontend (React)
 
@@ -25,9 +35,9 @@ npm install
 npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see the simulation.
+Open [http://localhost:3000](http://localhost:3000) to see the application.
 
-The frontend now connects exclusively to the Python backend - all simulation logic runs server-side.
+The frontend connects exclusively to the Python backend - all logic runs server-side.
 
 ### Full System with Docker
 

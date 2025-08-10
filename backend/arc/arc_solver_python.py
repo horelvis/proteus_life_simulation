@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
 import logging
-from arc_augmentation import ARCAugmentation, AugmentationType
+from arc.arc_augmentation import ARCAugmentation, AugmentationType
 
 logger = logging.getLogger(__name__)
 

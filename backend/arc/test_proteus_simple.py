@@ -4,7 +4,7 @@ Test simple del solver PROTEUS con puzzles básicos
 """
 
 import numpy as np
-from proteus_arc_solver import ProteusARCSolver
+from arc.proteus_arc_solver import ProteusARCSolver
 
 def print_grid(grid, title=""):
     """Imprime una grilla en formato texto"""
@@ -107,7 +107,7 @@ def test_pattern_fill():
     
     # Hack temporal para limitar generaciones
     def solve_limited(train_examples, test_input):
-        from proteus_arc_solver import TopologicalField
+        from arc.proteus_arc_solver import TopologicalField
         print("   (Limitado a 30 generaciones para test rápido)")
         
         # Inicializar
@@ -138,7 +138,7 @@ def test_pattern_fill():
             # Reproducción mínima
             while len(solver.organisms) < 5 and solver.organisms:
                 parent = np.random.choice(solver.organisms)
-                from proteus_arc_solver import ProteusOrganism
+                from arc.proteus_arc_solver import ProteusOrganism
                 child = ProteusOrganism(parent=parent)
                 solver.organisms.append(child)
         

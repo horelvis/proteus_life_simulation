@@ -537,7 +537,7 @@ class ARCEvaluator:
 
 if __name__ == "__main__":
     # Prueba del evaluador
-    from arc_solver_python import ARCSolverPython
+    from arc.arc_solver_python import ARCSolverPython
     
     print("🧪 Probando sistema de evaluación...\n")
     
