@@ -6,7 +6,18 @@ PROTEUS is an advanced artificial life simulation where organisms evolve through
 
 ## 🚀 Quick Start
 
-### Frontend (React + WebGL)
+### Backend (Python + Docker)
+
+```bash
+cd backend
+docker compose up
+```
+
+The backend API will be available at [http://localhost:8000](http://localhost:8000).
+
+For ARC solver mode, the WebSocket server runs on [ws://localhost:8765](ws://localhost:8765).
+
+### Frontend (React)
 
 ```bash
 cd frontend
@@ -16,14 +27,7 @@ npm start
 
 Open [http://localhost:3000](http://localhost:3000) to see the simulation.
 
-### Backend (Python + Docker)
-
-```bash
-cd backend
-docker compose up
-```
-
-The backend API will be available at [http://localhost:8000](http://localhost:8000).
+The frontend now connects exclusively to the Python backend - all simulation logic runs server-side.
 
 ### Full System with Docker
 
