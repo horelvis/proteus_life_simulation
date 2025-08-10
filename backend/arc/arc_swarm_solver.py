@@ -11,8 +11,8 @@ from dataclasses import dataclass
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import random
-from arc_solver_python import ARCSolverPython, TransformationType
-from arc_augmentation import ARCAugmentation, AugmentationType
+from .arc_solver_python import ARCSolverPython, TransformationType
+from .arc_augmentation import ARCAugmentation, AugmentationType
 
 logger = logging.getLogger(__name__)
 

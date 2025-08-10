@@ -5,6 +5,7 @@ Servidor Unificado PROTEUS - Maneja tanto simulación como ARC
 
 import asyncio
 import threading
+import sys
 import uvicorn
 from typing import Dict, Any
 

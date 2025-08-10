@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from proteus.core.topology_engine import TopologyEngine, TopologicalState
+from proteus.core.topology_engine import TopologyEngine
 
 
 @dataclass

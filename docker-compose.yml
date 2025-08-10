@@ -1,22 +1,25 @@
 version: '3.8'
 
 services:
-  # Backend con GPU/Vispy
+  # Backend unificado con GPU/Vispy
   proteus-backend:
     build: 
       context: ./backend
       dockerfile: Dockerfile
     container_name: proteus-backend
     ports:
-      - "8000:8000"
+      - "8000:8000"  # FastAPI
+      - "8765:8765"  # WebSocket ARC
     environment:
       - PYTHONUNBUFFERED=1
       - DISPLAY=:99
     volumes:
       # Para desarrollo - montar código fuente
       - ./backend/proteus:/app/proteus:ro
-      - ./backend/run_server.py:/app/run_server.py:ro
-      - ./backend/proteus_vispy.py:/app/proteus_vispy.py:ro
+      - ./backend/app:/app/app:ro
+      - ./backend/arc:/app/arc:ro
+      - ./backend/unified_server.py:/app/unified_server.py:ro
+      - ./backend/main.py:/app/main.py:ro
     restart: unless-stopped
     # Para soporte GPU (requiere nvidia-docker)
     # deploy:
@@ -40,6 +43,7 @@ services:
       # For network access, users should set these to their actual IP
       - REACT_APP_BACKEND_URL=http://host.docker.internal:8000
       - REACT_APP_WS_URL=ws://host.docker.internal:8000
+      - REACT_APP_ARC_WS_URL=ws://host.docker.internal:8765
     depends_on:
       - proteus-backend
     restart: unless-stopped

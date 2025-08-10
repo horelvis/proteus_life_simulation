@@ -12,10 +12,10 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 import numpy as np
 
-from arc_solver_python import ARCSolverPython
-from arc_visualizer import ARCVisualizer
-from arc_dataset_loader import ARCDatasetLoader
-from arc_swarm_solver import ARCSwarmSolver
+from .arc_solver_python import ARCSolverPython
+from .arc_visualizer import ARCVisualizer
+from .arc_dataset_loader import ARCDatasetLoader
+from .arc_swarm_solver import ARCSwarmSolver
 
 # Configurar logging
 logging.basicConfig(
