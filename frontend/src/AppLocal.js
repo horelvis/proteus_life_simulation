@@ -254,7 +254,10 @@ function AppLocal() {
   };
 
   const handleSpawnOrganism = (x, y) => {
-    // TODO: Implement spawn at click position
+    if (simulationRef.current && status === 'running') {
+      // Spawn a new organism at the clicked position
+      simulationRef.current.addOrganism(x, y);
+    }
   };
 
   const selectedOrganism = simulationState?.organisms.find(

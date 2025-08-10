@@ -155,8 +155,8 @@ export const ARCExperimentPanel = () => {
           }}>
             <h3 style={{ margin: '0 0 10px 0', color: '#FF851B' }}>✨ Resultados</h3>
             <p style={{ fontSize: '14px', margin: 0 }}>
-              Alcanzamos 50% de precisión, superando a GPT-4 (30%) 
-              con un sistema completamente interpretable.
+              Sistema experimental con resultados variables. 
+              Énfasis en transparencia e interpretabilidad completa.
             </p>
           </div>
         </div>
