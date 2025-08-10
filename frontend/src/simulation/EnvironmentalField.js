@@ -46,6 +46,17 @@ export class EnvironmentalField {
   depositTrace(trace) {
     const { position, pheromone, intensity = 1.0 } = trace;
     
+    // Validate inputs
+    if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+      console.warn('Invalid position in depositTrace:', position);
+      return;
+    }
+    
+    if (!pheromone || !Array.isArray(pheromone)) {
+      console.warn('Invalid pheromone in depositTrace:', pheromone);
+      return;
+    }
+    
     // Validate intensity
     const safeIntensity = Number.isFinite(intensity) ? Math.min(10, Math.max(0, intensity)) : 1.0;
     
@@ -58,19 +69,19 @@ export class EnvironmentalField {
     }
     
     // Deposit pheromones with clamping to prevent overflow
-    if (pheromone[0] > 0) {
+    if (pheromone[0] && Number.isFinite(pheromone[0]) && pheromone[0] > 0) {
       this.pheromones.danger[gy][gx] = Math.min(10, this.pheromones.danger[gy][gx] + pheromone[0] * safeIntensity);
     }
-    if (pheromone[1] > 0) {
+    if (pheromone[1] && Number.isFinite(pheromone[1]) && pheromone[1] > 0) {
       this.pheromones.food[gy][gx] = Math.min(10, this.pheromones.food[gy][gx] + pheromone[1] * safeIntensity);
     }
-    if (pheromone[2] > 0) {
+    if (pheromone[2] && Number.isFinite(pheromone[2]) && pheromone[2] > 0) {
       this.pheromones.mating[gy][gx] = Math.min(10, this.pheromones.mating[gy][gx] + pheromone[2] * safeIntensity);
     }
-    if (pheromone[3] > 0) {
+    if (pheromone[3] && Number.isFinite(pheromone[3]) && pheromone[3] > 0) {
       this.pheromones.death[gy][gx] = Math.min(10, this.pheromones.death[gy][gx] + pheromone[3] * safeIntensity);
     }
-    if (pheromone[4] > 0) {
+    if (pheromone[4] && Number.isFinite(pheromone[4]) && pheromone[4] > 0) {
       this.pheromones.activity[gy][gx] = Math.min(10, this.pheromones.activity[gy][gx] + pheromone[4] * safeIntensity);
     }
     
@@ -91,7 +102,7 @@ export class EnvironmentalField {
           const distance = Math.sqrt(dx * dx + dy * dy);
           const diffuseAmount = amount / (distance * 2);
           
-          for (const [type, grid] of Object.entries(this.pheromones)) {
+          for (const [, grid] of Object.entries(this.pheromones)) {
             grid[ny][nx] += grid[cy][cx] * diffuseAmount;
           }
         }

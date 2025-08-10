@@ -123,7 +123,6 @@ const Slider = styled.input`
 
 const ControlPanel = ({ status, onStart, onPause, onStop, onReset, onSpeedChange, onShowReport, initialSpeed = 1.0 }) => {
   const isRunning = status === 'running';
-  const isPaused = status === 'paused';
   const isStopped = status === 'stopped' || status === 'created';
   
   const [speed, setSpeed] = useState(initialSpeed);

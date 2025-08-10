@@ -56,13 +56,13 @@ export class ProteusInheritance {
         bodySymmetry: Math.floor(Math.random() * 4) + 1, // 1-4 fold symmetry
         organCapacity: Math.floor(Math.random() * 3) + 2, // 2-4 organs max
         
-        // Behavioral base parameters
-        baseMotility: 0.3 + Math.random() * 0.4,
-        baseSensitivity: 0.2 + Math.random() * 0.6,
-        baseResilience: 0.4 + Math.random() * 0.4,
+        // Behavioral base parameters - ensure viable starting values
+        baseMotility: 0.5 + Math.random() * 0.3,      // 0.5-0.8 (was 0.3-0.7)
+        baseSensitivity: 0.4 + Math.random() * 0.4,   // 0.4-0.8 (was 0.2-0.8)
+        baseResilience: 0.5 + Math.random() * 0.3,    // 0.5-0.8 (was 0.4-0.8)
         
-        // Mutation rate - balanced for real evolution
-        mutability: 0.05 + Math.random() * 0.10  // 5-15% mutation rate
+        // Mutation rate - higher for faster speciation
+        mutability: 0.10 + Math.random() * 0.20  // 10-30% mutation rate for more diversity
       };
     }
     
@@ -105,8 +105,8 @@ export class ProteusInheritance {
         return mutated;
       
       case 'bodySymmetry':
-        // Bigger changes in symmetry for visible mutations
-        const change = Math.random() < 0.8 ? 1 : 2;
+        // Bigger changes in symmetry for visible mutations and speciation
+        const change = Math.random() < 0.5 ? 1 : 2; // More likely to change by 2
         return Math.max(1, Math.min(6, value + (Math.random() < 0.5 ? -change : change)));
       
       case 'organCapacity':
@@ -158,11 +158,23 @@ export class ProteusInheritance {
   }
   
   depositTrace(event) {
+    // Handle position that might be array or object
+    let position = event.position;
+    if (Array.isArray(position)) {
+      position = { x: position[0], y: position[1] };
+    }
+    
+    // Validate position
+    if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+      console.warn('Invalid position in event:', event);
+      return;
+    }
+    
     const trace = {
-      position: event.position,
+      position: position,
       timestamp: Date.now(),
       type: event.type,
-      intensity: event.importance,
+      intensity: event.importance || 1.0,
       pheromone: this.generateEventPheromone(event),
       decay: 0.99 // Traces fade over time
     };
@@ -186,19 +198,22 @@ export class ProteusInheritance {
   
   generateEventPheromone(event) {
     // Event-specific chemical signature
-    const pheromone = new Float32Array(5);
+    const pheromone = [0, 0, 0, 0, 0]; // Use regular array instead of Float32Array
     
     switch(event.type) {
       case 'predator_escape':
+      case 'predator_encounter':
         pheromone[0] = 1.0; // Danger marker
         break;
       case 'food_found':
+      case 'successful_feeding':
         pheromone[1] = 1.0; // Food marker
         break;
       case 'reproduction':
         pheromone[2] = 1.0; // Mating marker
         break;
       case 'death_nearby':
+      case 'death':
         pheromone[3] = 1.0; // Death marker
         break;
       default:

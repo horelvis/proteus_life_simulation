@@ -31,7 +31,7 @@ class TopologicalCore:
     base_resilience: float = 0.5
     
     # Evolution
-    mutability: float = 0.10  # Increased from 0.01 to match frontend (5-15%)
+    mutability: float = 0.10  # Base rate, will be randomized on creation
     
     def mutate(self, rate: float = None) -> 'TopologicalCore':
         """Create mutated copy"""
@@ -230,13 +230,33 @@ class ProteusInheritance:
             'foraging': memory_behavior['forage_intensity'],
             'sociability': memory_behavior['social_attraction'],
             
-            # Organ expressions
+            # Organ expressions from inherited genes - REAL EVOLUTION
             'organ_expressions': {
-                'photosensor': self.core.base_sensitivity * (1 + memory_behavior['caution_level']),
-                'chemoreceptor': self.core.base_sensitivity * (1 + memory_behavior['forage_intensity']),
+                # Sensory organs from sensitivity gene
+                'photosensor': self.core.base_sensitivity * (1 + memory_behavior['caution_level'] * 0.3),
+                'chemoreceptor': self.core.base_sensitivity * (1 + memory_behavior['forage_intensity'] * 0.3),
+                
+                # Movement organs from motility gene
                 'flagellum': self.core.base_motility,
+                'speed_boost': self.core.base_motility if self.core.base_motility > 0.7 else 0,
+                
+                # Defense organs from resilience gene
                 'membrane': self.core.base_resilience,
-                'vacuole': 0.5
+                'armor_plates': (self.core.base_resilience - 0.4) * 2 if self.core.base_resilience > 0.6 else 0,
+                'toxin_gland': (self.core.base_resilience - 0.5) * 2 if self.core.base_resilience > 0.7 else 0,
+                
+                # Special organs from trait combinations
+                'electric_organ': (self.core.base_motility + self.core.base_resilience - 1.0) 
+                    if (self.core.base_motility > 0.6 and self.core.base_resilience > 0.6) else 0,
+                    
+                'regeneration': (self.core.base_resilience - 0.6) * 2 if self.core.base_resilience > 0.8 else 0,
+                
+                'camouflage': (self.core.base_sensitivity + self.core.base_resilience - 0.8) * 0.5
+                    if (self.core.base_sensitivity > 0.5 and self.core.base_resilience > 0.5) else 0,
+                    
+                'vacuole': 0.3 + self.core.base_resilience * 0.4,
+                
+                'pheromone_emitter': self.core.base_sensitivity * 0.5 if self.core.base_sensitivity > 0.6 else 0
             }
         }
         

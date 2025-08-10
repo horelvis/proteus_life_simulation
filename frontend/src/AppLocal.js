@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import styled from 'styled-components';
 import SimulationCanvas from './components/SimulationCanvas';
 import ControlPanel from './components/ControlPanel';
@@ -6,6 +6,7 @@ import StatsPanel from './components/StatsPanel';
 import OrganismInfo from './components/OrganismInfo';
 import SimulationReport from './components/SimulationReport';
 import MathematicsPanel from './components/MathematicsPanel';
+import { EvolutionMetrics } from './components/EvolutionMetrics';
 import { Simulation } from './simulation/Simulation';
 
 const AppContainer = styled.div`
@@ -85,7 +86,7 @@ const BottomPanel = styled.div`
 const ToggleButton = styled.button`
   position: fixed;
   bottom: 10px;
-  left: 10px;
+  left: ${props => props.$left || '10px'};
   background-color: var(--accent-primary);
   color: var(--bg-primary);
   border: none;
@@ -108,28 +109,44 @@ function AppLocal() {
   const [showReport, setShowReport] = useState(false);
   const [simulationReport, setSimulationReport] = useState(null);
   const [showMathPanel, setShowMathPanel] = useState(false);
+  const [showEvolutionMetrics, setShowEvolutionMetrics] = useState(false);
   const simulationRef = useRef(null);
   const animationFrameRef = useRef(null);
+  const updateLoopRef = useRef(null);
+  const initializedRef = useRef(false);
 
   const worldSize = { width: 800, height: 600 };
 
   useEffect(() => {
+    // Prevent double initialization in StrictMode
+    if (initializedRef.current) {
+      return;
+    }
+    initializedRef.current = true;
+    
+    // Cleanup any existing simulation first
+    if (simulationRef.current) {
+      simulationRef.current.stop();
+      simulationRef.current = null;
+    }
+    
     // Create simulation instance
     const sim = new Simulation(worldSize);
     simulationRef.current = sim;
     sim.initialize();
     
-    // Update state periodically
-    const updateState = () => {
-      if (simulationRef.current) {
-        setSimulationState(simulationRef.current.getState());
-      }
-      animationFrameRef.current = requestAnimationFrame(updateState);
-    };
+    // Get initial state to display
+    const initialState = sim.getState();
+    setSimulationState(initialState);
     
-    updateState();
+    // Don't auto-start - let user control it
+    setStatus('stopped');
     
     return () => {
+      // Cleanup on unmount
+      if (updateLoopRef.current) {
+        updateLoopRef.current.stop();
+      }
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
@@ -137,25 +154,73 @@ function AppLocal() {
         simulationRef.current.stop();
       }
     };
+  }, [worldSize]);
+
+  // Separate update loop that can be started/stopped
+  const startUpdateLoop = useCallback(() => {
+    let frameCount = 0;
+    let running = true;
+    
+    const updateState = () => {
+      if (!running || !simulationRef.current) return;
+      
+      try {
+        frameCount++;
+        if (frameCount % 3 === 0) {
+          const state = simulationRef.current.getState();
+          setSimulationState(state);
+        }
+      } catch (error) {
+        console.error('Error getting simulation state:', error);
+      }
+      
+      if (running) {
+        animationFrameRef.current = requestAnimationFrame(updateState);
+      }
+    };
+    
+    updateLoopRef.current = {
+      stop: () => {
+        running = false;
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+      }
+    };
+    
+    updateState();
   }, []);
 
   const handleStart = () => {
+    console.log('Start button clicked. Current status:', status);
     if (simulationRef.current && status !== 'running') {
+      console.log('Starting simulation...');
       simulationRef.current.start();
+      startUpdateLoop(); // Start the UI update loop
       setStatus('running');
     }
   };
 
   const handlePause = () => {
+    console.log('Pause button clicked. Current status:', status);
     if (simulationRef.current && status === 'running') {
+      console.log('Pausing simulation...');
       simulationRef.current.stop();
+      if (updateLoopRef.current) {
+        updateLoopRef.current.stop(); // Stop the UI update loop
+      }
       setStatus('paused');
     }
   };
 
   const handleStop = () => {
+    console.log('Stop button clicked');
     if (simulationRef.current) {
+      console.log('Stopping simulation...');
       simulationRef.current.stop();
+      if (updateLoopRef.current) {
+        updateLoopRef.current.stop(); // Stop the UI update loop
+      }
       
       // Generate report before clearing
       const report = simulationRef.current.getSimulationReport();
@@ -167,7 +232,13 @@ function AppLocal() {
   };
   
   const handleReset = () => {
+    console.log('Reset button clicked');
     if (simulationRef.current) {
+      console.log('Resetting simulation...');
+      simulationRef.current.stop(); // Stop first
+      if (updateLoopRef.current) {
+        updateLoopRef.current.stop(); // Stop the UI update loop
+      }
       simulationRef.current.organisms = [];
       simulationRef.current.nutrients = [];
       simulationRef.current.predators = [];
@@ -238,12 +309,22 @@ function AppLocal() {
         {showMathPanel ? '📊 Hide Math' : '📊 Show Math'}
       </ToggleButton>
       
+      <ToggleButton $left="150px" onClick={() => setShowEvolutionMetrics(!showEvolutionMetrics)}>
+        {showEvolutionMetrics ? '🧬 Hide Evolution' : '🧬 Show Evolution'}
+      </ToggleButton>
+      
       <BottomPanel $show={showMathPanel}>
         <MathematicsPanel
           organisms={simulationState?.organisms || []}
           predators={simulationState?.predators || []}
           environmentalField={simulationState?.environmentalField || []}
           statistics={simulationState?.statistics || {}}
+        />
+      </BottomPanel>
+      
+      <BottomPanel $show={showEvolutionMetrics}>
+        <EvolutionMetrics
+          simulation={simulationRef.current}
         />
       </BottomPanel>
       

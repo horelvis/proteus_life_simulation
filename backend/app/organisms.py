@@ -18,6 +18,11 @@ class TopologicalGenome:
     topology: np.ndarray  # Matriz de conexiones topológicas
     organ_expressions: Dict[str, float] = field(default_factory=dict)
     mutation_history: List[str] = field(default_factory=list)
+    # Base traits that determine organ expression
+    base_motility: float = 0.5
+    base_sensitivity: float = 0.5
+    base_resilience: float = 0.5
+    mutability: float = 0.1
     
     def mutate(self, mutation_rate: float = 0.1):
         """Aplica mutaciones al genoma"""
@@ -28,21 +33,74 @@ class TopologicalGenome:
             self.topology[i, j] = np.clip(self.topology[i, j], -1, 1)
             self.mutation_history.append(f"topology_{i}_{j}")
         
-        # Mutar expresión de órganos
-        for organ in self.organ_expressions:
-            if np.random.random() < mutation_rate * 0.5:
-                delta = np.random.normal(0, 0.1)
-                self.organ_expressions[organ] = np.clip(
-                    self.organ_expressions[organ] + delta, 0, 1
-                )
-                self.mutation_history.append(f"organ_{organ}")
+        # Mutar rasgos base (que controlan expresión de órganos)
+        if np.random.random() < mutation_rate:
+            # Mutar motilidad
+            self.base_motility = np.clip(
+                self.base_motility + np.random.normal(0, 0.1), 0.1, 1.0
+            )
+            self.mutation_history.append("base_motility")
+            
+        if np.random.random() < mutation_rate:
+            # Mutar sensibilidad
+            self.base_sensitivity = np.clip(
+                self.base_sensitivity + np.random.normal(0, 0.1), 0.1, 1.0
+            )
+            self.mutation_history.append("base_sensitivity")
+            
+        if np.random.random() < mutation_rate:
+            # Mutar resiliencia
+            self.base_resilience = np.clip(
+                self.base_resilience + np.random.normal(0, 0.1), 0.1, 1.0
+            )
+            self.mutation_history.append("base_resilience")
+        
+        # Mutar tasa de mutación en sí misma
+        if np.random.random() < mutation_rate * 0.5:
+            self.mutability = np.clip(
+                self.mutability * (0.5 + np.random.random()), 0.01, 0.5
+            )
+            self.mutation_history.append("mutability")
+        
+        # Recalcular expresión de órganos basada en nuevos rasgos
+        self._update_organ_expressions()
+    
+    def _update_organ_expressions(self):
+        """Actualiza expresiones de órganos basado en rasgos base"""
+        self.organ_expressions = {
+            # Órganos sensoriales de sensibilidad
+            "photosensor": self.base_sensitivity,
+            "chemoreceptor": self.base_sensitivity,
+            
+            # Órganos de movimiento de motilidad
+            "flagellum": self.base_motility,
+            "speed_boost": (self.base_motility - 0.5) * 2 if self.base_motility > 0.7 else 0,
+            
+            # Órganos de defensa de resiliencia
+            "membrane": self.base_resilience,
+            "armor_plates": (self.base_resilience - 0.4) * 2 if self.base_resilience > 0.6 else 0,
+            "toxin_gland": (self.base_resilience - 0.5) * 2 if self.base_resilience > 0.7 else 0,
+            
+            # Órganos especiales de combinaciones
+            "electric_organ": (self.base_motility + self.base_resilience - 1.0) 
+                if (self.base_motility > 0.6 and self.base_resilience > 0.6) else 0,
+            "regeneration": (self.base_resilience - 0.6) * 2 if self.base_resilience > 0.8 else 0,
+            "camouflage": (self.base_sensitivity + self.base_resilience - 0.8) * 0.5
+                if (self.base_sensitivity > 0.5 and self.base_resilience > 0.5) else 0,
+            "vacuole": 0.3 + self.base_resilience * 0.4,
+            "pheromone_emitter": self.base_sensitivity * 0.5 if self.base_sensitivity > 0.6 else 0
+        }
     
     def copy(self):
         """Crea una copia del genoma"""
         return TopologicalGenome(
             topology=self.topology.copy(),
             organ_expressions=self.organ_expressions.copy(),
-            mutation_history=self.mutation_history.copy()
+            mutation_history=self.mutation_history.copy(),
+            base_motility=self.base_motility,
+            base_sensitivity=self.base_sensitivity,
+            base_resilience=self.base_resilience,
+            mutability=self.mutability
         )
 
 
@@ -111,17 +169,44 @@ class WebOrganism:
             self.genome = parent_genome.copy()
             self.genome.mutate()
         else:
-            # Genoma inicial aleatorio
+            # Genoma inicial con rasgos base aleatorios
+            base_motility = 0.3 + np.random.random() * 0.4
+            base_sensitivity = 0.2 + np.random.random() * 0.6
+            base_resilience = 0.4 + np.random.random() * 0.4
+            
+            # Expresión de órganos basada en genes heredados
             self.genome = TopologicalGenome(
                 topology=np.random.randn(5, 5) * 0.1,
                 organ_expressions={
-                    "photosensor": np.random.random() * 0.3,
-                    "chemoreceptor": np.random.random() * 0.3,
-                    "flagellum": 0.1 + np.random.random() * 0.2,
-                    "membrane": 0.1,
-                    "vacuole": 0.1
+                    # Órganos sensoriales de sensibilidad
+                    "photosensor": base_sensitivity,
+                    "chemoreceptor": base_sensitivity,
+                    
+                    # Órganos de movimiento de motilidad
+                    "flagellum": base_motility,
+                    "speed_boost": (base_motility - 0.5) * 2 if base_motility > 0.7 else 0,
+                    
+                    # Órganos de defensa de resiliencia
+                    "membrane": base_resilience,
+                    "armor_plates": (base_resilience - 0.4) * 2 if base_resilience > 0.6 else 0,
+                    "toxin_gland": (base_resilience - 0.5) * 2 if base_resilience > 0.7 else 0,
+                    
+                    # Órganos especiales de combinaciones
+                    "electric_organ": (base_motility + base_resilience - 1.0) 
+                        if (base_motility > 0.6 and base_resilience > 0.6) else 0,
+                    "regeneration": (base_resilience - 0.6) * 2 if base_resilience > 0.8 else 0,
+                    "camouflage": (base_sensitivity + base_resilience - 0.8) * 0.5
+                        if (base_sensitivity > 0.5 and base_resilience > 0.5) else 0,
+                    "vacuole": 0.3 + base_resilience * 0.4,
+                    "pheromone_emitter": base_sensitivity * 0.5 if base_sensitivity > 0.6 else 0
                 }
             )
+            
+            # Guardar rasgos base en el genoma para herencia
+            self.genome.base_motility = base_motility
+            self.genome.base_sensitivity = base_sensitivity
+            self.genome.base_resilience = base_resilience
+            self.genome.mutability = 0.05 + np.random.random() * 0.10  # 5-15% mutation rate
         
         # Inicializar órganos
         self.organs: List[Organ] = []
@@ -395,8 +480,8 @@ class WebOrganism:
         # Extraer características topológicas de la trayectoria
         invariants = self._extract_topological_invariants()
         
-        # Mutación base del genoma (5-15% como en frontend)
-        base_rate = 0.05 + np.random.random() * 0.10
+        # Mutación base del genoma - usar tasa heredada
+        base_rate = self.genome.mutability if hasattr(self.genome, 'mutability') else 0.1
         
         # Modular tasa de mutación según comportamiento topológico
         if invariants['persistence'] > 0.8:

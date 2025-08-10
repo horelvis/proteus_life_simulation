@@ -2,12 +2,15 @@
  * PROTEUS Genetic Pool - Preserves genetic advances across simulations
  */
 
+import { EvolutionaryMetrics } from './EvolutionaryMetrics';
+
 export class GeneticPool {
   constructor() {
     this.pool = [];
     this.maxPoolSize = 50;
     this.generationRecords = [];
     this.simulationHistory = [];
+    this.evolutionaryMetrics = new EvolutionaryMetrics();
     this.currentSimulationStats = {
       startTime: null,
       endTime: null,
@@ -94,6 +97,68 @@ export class GeneticPool {
       stats.phenotypeDistribution[phenotype] = (stats.phenotypeDistribution[phenotype] || 0) + 1;
     });
     
+    // Species tracking by body symmetry
+    stats.speciesDistribution = {};
+    stats.speciesGroups = [];
+    const speciesMap = new Map();
+    
+    organisms.forEach(o => {
+      if (!o.inheritance?.topologicalCore) return;
+      const symmetry = o.inheritance.topologicalCore.bodySymmetry;
+      const speciesKey = `Symmetry-${symmetry}`;
+      
+      if (!speciesMap.has(speciesKey)) {
+        speciesMap.set(speciesKey, {
+          name: speciesKey,
+          symmetry: symmetry,
+          count: 0,
+          avgMotility: 0,
+          avgSensitivity: 0,
+          avgResilience: 0,
+          members: []
+        });
+      }
+      
+      const species = speciesMap.get(speciesKey);
+      species.count++;
+      species.avgMotility += o.inheritance.topologicalCore.baseMotility;
+      species.avgSensitivity += o.inheritance.topologicalCore.baseSensitivity;
+      species.avgResilience += o.inheritance.topologicalCore.baseResilience;
+      species.members.push({ id: o.id, position: o.position });
+    });
+    
+    // Calculate species averages and check grouping
+    speciesMap.forEach((species, key) => {
+      if (species.count > 0) {
+        species.avgMotility /= species.count;
+        species.avgSensitivity /= species.count;
+        species.avgResilience /= species.count;
+        stats.speciesDistribution[key] = species.count;
+        
+        // Check for grouping behavior
+        if (species.count > 1) {
+          const positions = species.members.map(m => m.position).filter(p => p !== null);
+          
+          // Calculate average distance between members
+          let totalDist = 0;
+          let pairs = 0;
+          for (let i = 0; i < positions.length - 1; i++) {
+            for (let j = i + 1; j < positions.length; j++) {
+              const dx = positions[i].x - positions[j].x;
+              const dy = positions[i].y - positions[j].y;
+              totalDist += Math.sqrt(dx * dx + dy * dy);
+              pairs++;
+            }
+          }
+          
+          species.avgGroupDistance = pairs > 0 ? totalDist / pairs : 0;
+          species.isGrouping = species.avgGroupDistance < 100; // Grouped if avg distance < 100
+        }
+        
+        stats.speciesGroups.push(species);
+      }
+    });
+    
     // Organ evolution tracking
     stats.organEvolution = {};
     organisms.forEach(o => {
@@ -138,6 +203,29 @@ export class GeneticPool {
       organs: o.organs.length,
       capabilities: o.capabilities
     }));
+    
+    // Calculate evolvability and novelty for top performers
+    if (topOrganisms.length > 0) {
+      // Measure evolvability of best organism
+      const best = topOrganisms[0];
+      if (best.inheritance) {
+        stats.evolvability = this.evolutionaryMetrics.measureEvolvability(best, 5);
+      }
+      
+      // Calculate novelty for all organisms with sufficient trajectory
+      let totalNovelty = 0;
+      let noveltyCount = 0;
+      
+      organisms.forEach(o => {
+        if (o.trajectory && o.trajectory.length > 20) {
+          const novelty = this.evolutionaryMetrics.calculateNovelty(o.trajectory);
+          totalNovelty += novelty.noveltyScore;
+          noveltyCount++;
+        }
+      });
+      
+      stats.averageNovelty = noveltyCount > 0 ? totalNovelty / noveltyCount : 0;
+    }
     
     // Update predator statistics
     if (predators && predators.length > 0) {
@@ -241,8 +329,11 @@ export class GeneticPool {
         mutationEvents: stats.mutationEvents,
         survivingLineages: stats.survivingLineages.size,
         phenotypes: stats.phenotypeDistribution,
-        organDevelopment: stats.organEvolution
+        organDevelopment: stats.organEvolution,
+        evolvability: stats.evolvability || null,
+        averageNovelty: stats.averageNovelty || 0
       },
+      metrics: this.evolutionaryMetrics.getSummary(),
       topPerformers: stats.topPerformers,
       geneticPoolSize: this.pool.length,
       preservedElites: this.pool.slice(0, 5).map(r => ({
@@ -265,6 +356,7 @@ export class GeneticPool {
   
   getFormattedReport() {
     const report = this.generateSimulationReport();
+    const stats = this.currentSimulationStats;
     
     let formatted = `
 ═══════════════════════════════════════════
@@ -286,6 +378,8 @@ Extinction Events: ${report.summary.extinctionEvents}
 ──────────────────────────────────────────
 Mutation Events: ${report.evolution.mutationEvents}
 Surviving Lineages: ${report.evolution.survivingLineages}
+Evolvability: ${report.evolution.evolvability ? report.evolution.evolvability.averageSensitivity.toFixed(3) : 'N/A'}
+Average Novelty: ${report.evolution.averageNovelty.toFixed(3)}
 
 Phenotype Distribution:
 ${Object.entries(report.evolution.phenotypes)
@@ -298,6 +392,35 @@ ${Object.entries(report.evolution.organDevelopment)
     `  ${organ}: ${stats.count} organisms (avg: ${stats.avgFunctionality.toFixed(2)}, max: ${stats.maxFunctionality.toFixed(2)})`
   )
   .join('\n')}
+
+🌊 SPECIES EMERGENCE & GROUPING
+──────────────────────────────────────────
+Distinct Species: ${Object.keys(stats.speciesDistribution || {}).length}
+
+Species Distribution:
+${Object.entries(stats.speciesDistribution || {})
+  .map(([species, count]) => `  ${species}: ${count} organisms`)
+  .join('\n') || '  No distinct species detected'}
+
+Grouping Behavior:
+${(stats.speciesGroups || [])
+  .filter(species => species.count > 1)
+  .map(species => {
+    const groupStatus = species.isGrouping ? '✓ Grouping' : '✗ Dispersed';
+    return `  ${species.name}: ${groupStatus} (${species.count} members, avg distance: ${species.avgGroupDistance ? species.avgGroupDistance.toFixed(1) : 'N/A'})`;
+  })
+  .join('\n') || '  No grouping behavior observed'}
+
+Species Characteristics:
+${(stats.speciesGroups || [])
+  .filter(species => species.count > 2)
+  .map(species => 
+    `  ${species.name}:\n` +
+    `    Motility: ${species.avgMotility.toFixed(2)}\n` +
+    `    Sensitivity: ${species.avgSensitivity.toFixed(2)}\n` +
+    `    Resilience: ${species.avgResilience.toFixed(2)}`
+  )
+  .join('\n') || '  Insufficient data for species characteristics'}
 
 🦈 PREDATOR ECOSYSTEM
 ──────────────────────────────────────────
@@ -312,6 +435,13 @@ ${report.topPerformers.slice(0, 5)
     `${i + 1}. Gen ${p.generation} | Age: ${p.age.toFixed(1)} | Energy: ${p.energy.toFixed(2)} | ${p.phenotype} | ${p.organs} organs`
   )
   .join('\n')}
+
+📊 EVOLUTIONARY METRICS
+──────────────────────────────────────────
+Evolvability Trend: ${report.metrics ? (report.metrics.evolvability.trend * 100).toFixed(1) : '0.0'}%
+Novelty Archive Size: ${report.metrics ? report.metrics.novelty.archiveSize : 0}
+Archive Diversity: ${report.metrics ? report.metrics.novelty.archiveDiversity.toFixed(2) : '0.00'}
+Trajectories Analyzed: ${report.metrics ? report.metrics.measurements.trajectoriesAnalyzed : 0}
 
 💾 GENETIC PRESERVATION
 ──────────────────────────────────────────

@@ -68,4 +68,17 @@ export class TopologyEngine {
     
     return flow;
   }
+
+  getFlowAt(position) {
+    // Return topological flow at given position for intelligent exploration
+    const gradient = this.computeGradient(position.x, position.y);
+    
+    // Convert gradient to flow vector
+    const flow = {
+      x: -gradient.y * 0.5,
+      y: gradient.x * 0.5
+    };
+    
+    return flow;
+  }
 }

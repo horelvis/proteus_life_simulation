@@ -8,6 +8,9 @@ import uuid
 import time
 from dataclasses import dataclass
 import threading
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .models import (
     SimulationConfig, 

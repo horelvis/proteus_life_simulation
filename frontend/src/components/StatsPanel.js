@@ -1,6 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
-import { LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { AreaChart, Area, PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 const Panel = styled.div`
   flex: 1;
@@ -54,7 +54,7 @@ const ChartTitle = styled.h3`
 
 const StatsPanel = ({ statistics = {} }) => {
   const {
-    total_organisms = 0,
+    total_organisms = statistics.totalOrganisms || 0, // Fallback for backwards compatibility
     births = 0,
     deaths = 0,
     mutations = 0,
@@ -64,10 +64,15 @@ const StatsPanel = ({ statistics = {} }) => {
     organ_distribution = {},
     average_generation = 0,
     highest_generation = 0,
-    total_experiences = 0,
+    // total_experiences = 0, // Removed - unused
     memory_anchors = 0,
     average_mutation_rate = 0
   } = statistics;
+  
+  // Debug logging
+  if (total_organisms === 0 && statistics.totalOrganisms > 0) {
+    console.warn('Using totalOrganisms fallback:', statistics.totalOrganisms);
+  }
   
   // Handle NaN or null values
   const avgAge = isNaN(average_age) || average_age === null ? 0 : average_age;

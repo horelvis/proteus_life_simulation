@@ -7,7 +7,7 @@ export class Nutrient {
     this.id = Math.random().toString(36).substr(2, 9);
     this.x = x;
     this.y = y;
-    this.energy = 0.3;
+    this.energy = 0.5; // Increased nutrient value
     this.size = 3;
     this.alive = true;
     this.age = 0;

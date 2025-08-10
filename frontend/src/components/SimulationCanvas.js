@@ -33,7 +33,7 @@ const SimulationCanvas = ({
 }) => {
   const canvasRef = useRef(null);
   const animationRef = useRef(null);
-  const [worldSize, setWorldSize] = useState({ width: 800, height: 600 });
+  const [worldSize] = useState({ width: 800, height: 600 });
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   // Zoom removed for better performance
   const zoom = 1;
@@ -41,7 +41,7 @@ const SimulationCanvas = ({
   const [isPanning, setIsPanning] = useState(false);
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
   const [isHoveringOrganism, setIsHoveringOrganism] = useState(false);
-  const feedingEffectsRef = useRef([]);
+  // const feedingEffectsRef = useRef([]); // Removed - unused
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -313,41 +313,10 @@ const SimulationCanvas = ({
   };
 
 
-  // Convert HSL to RGBA
-  const hslToRgba = (hslColor, alpha) => {
-    const match = hslColor.match(/hsl\((\d+(?:\.\d+)?),\s*(\d+)%,\s*(\d+)%\)/);
-    if (!match) return `rgba(100, 200, 255, ${alpha})`;
-    
-    const h = parseFloat(match[1]) / 360;
-    const s = parseFloat(match[2]) / 100;
-    const l = parseFloat(match[3]) / 100;
-    
-    let r, g, b;
-    
-    if (s === 0) {
-      r = g = b = l;
-    } else {
-      const hue2rgb = (p, q, t) => {
-        if (t < 0) t += 1;
-        if (t > 1) t -= 1;
-        if (t < 1/6) return p + (q - p) * 6 * t;
-        if (t < 1/2) return q;
-        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-        return p;
-      };
-      
-      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-      const p = 2 * l - q;
-      r = hue2rgb(p, q, h + 1/3);
-      g = hue2rgb(p, q, h);
-      b = hue2rgb(p, q, h - 1/3);
-    }
-    
-    return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${alpha})`;
-  };
+  // Removed unused hslToRgba function
 
   const drawOrganism = (ctx, organism, isSelected) => {
-    const { position, velocity, color, energy, organs = [], age = 0, maxAge = 100, generation = 0, isPanicked = false } = organism;
+    const { position, velocity, energy, organs = [], age = 0, maxAge = 100, isPanicked = false } = organism;
     
     // Draw trajectory if selected
     if (isSelected && organism.trajectory) {
@@ -638,143 +607,160 @@ const SimulationCanvas = ({
   };
 
   const drawPredator = (ctx, predator) => {
-    const { position, velocity = {x: 0, y: 0}, size = 10, light_intensity = 0.5, light_flash = 0, tentacles = [] } = predator;
+    const { position, velocity = {x: 0, y: 0}, size = 10, opacity = 1.0 } = predator;
     
     ctx.save();
     ctx.translate(position.x, position.y);
+    
+    // Apply blinking opacity
+    ctx.globalAlpha = opacity;
 
+    // Calculate predator size (using its larger size)
+    const baseSize = size;
+    const energy = 1.5; // Predators have more energy
+    const age = 10; // Middle age
+    const maxAge = 50;
+    const actualSize = baseSize + energy * 2 + Math.sin(age * 0.1) * 0.5;
+    
+    // Time-based animation
+    const time = Date.now() * 0.001;
+    const breathingScale = 1 + Math.sin(time * 2 + position.x * 0.01) * 0.02;
+    
+    // Body dimensions - elongated by 50%
+    const bodyLength = actualSize * 1.4 * breathingScale * 1.5; // 50% longer
+    const bodyWidth = actualSize * breathingScale;
+    
     // Rotation based on movement
-    const rotation = Math.atan2(velocity.y || 0, velocity.x || 1);
+    const rotation = Math.atan2(velocity.y, velocity.x);
     ctx.rotate(rotation);
-
-    // Light flash effect
-    if (light_flash > 0) {
-      // Bright white flash
-      const flashGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 4);
-      flashGradient.addColorStop(0, `rgba(255, 255, 255, ${light_flash * 0.9})`);
-      flashGradient.addColorStop(0.3, `rgba(240, 240, 255, ${light_flash * 0.5})`);
-      flashGradient.addColorStop(1, 'transparent');
+    
+    // DESTELLO VERDE (menos brillante)
+    if (predator.lightFlash && predator.lightFlash > 0) {
+      const flashRadius = actualSize * 3 * predator.lightFlash;
+      const flashGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, flashRadius);
+      // Usar verde más oscuro y menos opaco
+      flashGradient.addColorStop(0, `rgba(0, 180, 70, ${0.3 * predator.lightFlash})`);
+      flashGradient.addColorStop(0.3, `rgba(0, 150, 60, ${0.2 * predator.lightFlash})`);
+      flashGradient.addColorStop(0.6, `rgba(0, 120, 50, ${0.1 * predator.lightFlash})`);
+      flashGradient.addColorStop(1, 'rgba(0, 100, 40, 0)');
       
       ctx.fillStyle = flashGradient;
       ctx.beginPath();
-      ctx.arc(0, 0, size * 4, 0, Math.PI * 2);
+      ctx.arc(0, 0, flashRadius, 0, Math.PI * 2);
       ctx.fill();
     }
     
-    // Bioluminescent white glow based on hunt intensity
-    const glowRadius = size * (1.5 + light_intensity);
-    const glowGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, glowRadius);
-    glowGradient.addColorStop(0, `rgba(255, 255, 255, ${light_intensity * 0.6})`);
-    glowGradient.addColorStop(0.5, `rgba(220, 220, 255, ${light_intensity * 0.3})`);
-    glowGradient.addColorStop(1, 'transparent');
-    
-    ctx.fillStyle = glowGradient;
+    // Create irregular oval shape with narrower center
     ctx.beginPath();
-    ctx.arc(0, 0, glowRadius, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Predator body - stealthy deep sea creature design
-    
-    // Shadow/camouflage effect
-    const shadowGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 1.5);
-    shadowGradient.addColorStop(0, 'rgba(0, 0, 0, 0.3)');
-    shadowGradient.addColorStop(1, 'transparent');
-    ctx.fillStyle = shadowGradient;
-    ctx.beginPath();
-    ctx.arc(0, 0, size * 1.5, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Tentacles/appendages
-    ctx.strokeStyle = 'rgba(20, 30, 40, 0.8)';
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    
-    for (let i = 0; i < 8; i++) {
-      const angle = (i / 8) * Math.PI * 2 + Math.sin(Date.now() * 0.001 + i) * 0.1;
-      const tentacleLength = size * (1.2 + Math.sin(Date.now() * 0.002 + i * 2) * 0.2);
-      
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      
-      // Curved tentacle
-      const cp1x = Math.cos(angle) * size * 0.5;
-      const cp1y = Math.sin(angle) * size * 0.5;
-      const cp2x = Math.cos(angle + 0.2) * tentacleLength * 0.8;
-      const cp2y = Math.sin(angle + 0.2) * tentacleLength * 0.8;
-      const endX = Math.cos(angle + 0.1) * tentacleLength;
-      const endY = Math.sin(angle + 0.1) * tentacleLength;
-      
-      ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, endX, endY);
-      ctx.stroke();
-      
-      // Sucker dots
-      ctx.fillStyle = 'rgba(40, 50, 60, 0.6)';
-      ctx.beginPath();
-      ctx.arc(endX, endY, 1.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Main body - dark and translucent
-    const bodyGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
-    bodyGradient.addColorStop(0, 'rgba(30, 40, 50, 0.9)');
-    bodyGradient.addColorStop(0.5, 'rgba(20, 30, 40, 0.8)');
-    bodyGradient.addColorStop(1, 'rgba(10, 20, 30, 0.7)');
-    ctx.fillStyle = bodyGradient;
-    ctx.beginPath();
-    
-    // Irregular body shape
-    const points = 12;
+    const points = 16;
     for (let i = 0; i < points; i++) {
       const angle = (i / points) * Math.PI * 2;
-      const wobble = Math.sin(angle * 3 + Date.now() * 0.001) * 2;
-      const r = size + wobble;
+      const wobble = Math.sin(angle * 3 + time) * 0.05 + Math.sin(angle * 5) * 0.03;
+      
+      // Create pinched center effect
+      const centerPinch = 1 - Math.abs(Math.cos(angle)) * 0.2; // Narrower at sides
+      
+      const radiusX = (bodyLength * 0.5) * (1 + wobble);
+      const radiusY = (bodyWidth * 0.5) * centerPinch * (1 + wobble * 0.5);
+      const x = Math.cos(angle) * radiusX;
+      const y = Math.sin(angle) * radiusY;
       
       if (i === 0) {
-        ctx.moveTo(Math.cos(angle) * r, Math.sin(angle) * r);
+        ctx.moveTo(x, y);
       } else {
-        ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
+        ctx.lineTo(x, y);
       }
     }
     ctx.closePath();
-    ctx.fill();
-
-    // Internal organs visible through translucent body
-    ctx.fillStyle = 'rgba(60, 80, 100, 0.4)';
-    ctx.beginPath();
-    ctx.arc(-3, -2, 4, 0, Math.PI * 2);
+    
+    // Main body color - SAFE ZONE GREEN (less bright)
+    const baseColor = 'rgba(0, 255, 100, 0.5)'; // Same opacity as SAFE ZONE text
+    
+    // Dark green outline
+    ctx.strokeStyle = 'rgba(0, 100, 40, 0.6)'; // Darker, less bright
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Fill body with subtle gradient (less bright)
+    const bodyGradient = ctx.createLinearGradient(-bodyLength/2, -bodyWidth/2, bodyLength/2, bodyWidth/2);
+    bodyGradient.addColorStop(0, 'rgba(0, 180, 70, 0.4)'); // Less bright
+    bodyGradient.addColorStop(0.5, 'rgba(0, 150, 60, 0.4)'); // Less bright
+    bodyGradient.addColorStop(1, 'rgba(0, 120, 50, 0.4)'); // Less bright
+    ctx.fillStyle = bodyGradient;
     ctx.fill();
     
+    // Draw cilia/short spines
+    ctx.save();
+    const ciliaCount = 24;
+    for (let i = 0; i < ciliaCount; i++) {
+      const angle = (i / ciliaCount) * Math.PI * 2;
+      const wobblePhase = time * 3 + i * 0.5;
+      const ciliaLength = 2 + Math.sin(wobblePhase) * 0.5;
+      
+      const centerPinch = 1 - Math.abs(Math.cos(angle)) * 0.2;
+      const edgeX = Math.cos(angle) * (bodyLength * 0.5);
+      const edgeY = Math.sin(angle) * (bodyWidth * 0.5 * centerPinch);
+      
+      const endX = edgeX + Math.cos(angle) * ciliaLength;
+      const endY = edgeY + Math.sin(angle) * ciliaLength;
+      
+      ctx.strokeStyle = 'rgba(0, 100, 40, 0.6)'; // Green cilia
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(edgeX, edgeY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+    }
+    ctx.restore();
+    
+    // Draw internal structures (GREEN VERSION)
+    // Large nucleus
+    const nucleusSize = actualSize * 0.3;
+    const nucleusX = bodyLength * 0.1;
+    const nucleusY = 0;
+    
+    ctx.fillStyle = 'rgba(0, 80, 30, 0.4)'; // Darker green nucleus
     ctx.beginPath();
-    ctx.arc(2, 3, 3, 0, Math.PI * 2);
+    ctx.arc(nucleusX, nucleusY, nucleusSize, 0, Math.PI * 2);
     ctx.fill();
-
-    // Multiple eyes for 360° vision
-    const eyePositions = [
-      { x: size * 0.4, y: 0, size: 2.5 },
-      { x: -size * 0.3, y: -size * 0.3, size: 2 },
-      { x: -size * 0.3, y: size * 0.3, size: 2 },
+    
+    // Nucleus inner structure
+    ctx.fillStyle = 'rgba(0, 60, 25, 0.5)'; // Even darker green
+    ctx.beginPath();
+    ctx.arc(nucleusX, nucleusY, nucleusSize * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Vacuoles and other organelles
+    const vacuolePositions = [
+      { x: -bodyLength * 0.2, y: bodyWidth * 0.2, size: actualSize * 0.15 },
+      { x: -bodyLength * 0.1, y: -bodyWidth * 0.3, size: actualSize * 0.1 },
+      { x: bodyLength * 0.3, y: bodyWidth * 0.1, size: actualSize * 0.12 },
+      { x: bodyLength * 0.2, y: -bodyWidth * 0.2, size: actualSize * 0.08 }
     ];
     
-    eyePositions.forEach(eye => {
-      // Eye glow
-      ctx.fillStyle = light_intensity > 0.7 ? 'rgba(100, 150, 255, 0.6)' : 'rgba(255, 100, 100, 0.3)';
+    vacuolePositions.forEach(vac => {
+      ctx.fillStyle = 'rgba(50, 150, 80, 0.3)'; // Darker green vacuoles
       ctx.beginPath();
-      ctx.arc(eye.x, eye.y, eye.size + 1, 0, Math.PI * 2);
+      ctx.arc(vac.x, vac.y, vac.size, 0, Math.PI * 2);
       ctx.fill();
       
-      // Eye
-      ctx.fillStyle = 'rgba(200, 220, 240, 0.9)';
-      ctx.beginPath();
-      ctx.arc(eye.x, eye.y, eye.size, 0, Math.PI * 2);
-      ctx.fill();
-      
-      // Pupil
-      ctx.fillStyle = '#000000';
-      ctx.beginPath();
-      ctx.arc(eye.x, eye.y, eye.size * 0.5, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.strokeStyle = 'rgba(30, 100, 50, 0.4)'; // Darker green outline
+      ctx.lineWidth = 1;
+      ctx.stroke();
     });
-
+    
+    // Small dots/granules throughout
+    ctx.fillStyle = 'rgba(0, 100, 40, 0.3)'; // Darker green granules
+    for (let i = 0; i < 8; i++) {
+      const granuleX = (Math.random() - 0.5) * bodyLength * 0.8;
+      const granuleY = (Math.random() - 0.5) * bodyWidth * 0.8;
+      const granuleSize = 1 + Math.random();
+      
+      ctx.beginPath();
+      ctx.arc(granuleX, granuleY, granuleSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
     ctx.restore();
   };
 

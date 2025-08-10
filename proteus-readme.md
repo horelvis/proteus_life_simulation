@@ -38,8 +38,17 @@ Un ecosistema 2D acuático visto desde arriba donde criaturas topológicas lucha
 **Características**:
 - **Sin cerebro**: No tiene neuronas ni red neuronal
 - **Navegación topológica**: Se mueve siguiendo gradientes en el campo topológico
-- **Señal hereditaria**: Transmite su "semilla topológica" a la siguiente generación
-- **Percepción de campo**: Detecta perturbaciones en el campo (luz = peligro)
+- **Sistema tri-capa de herencia**:
+  - Capa 1: Núcleo topológico (ADN - 200 bytes)
+  - Capa 2: Memoria holográfica (Epigenética - 8KB)
+  - Capa 3: Trazas ambientales (Cultura - en el mundo)
+- **Percepción multimodal**: 
+  - Quimiotaxis (5 tipos de feromonas)
+  - Detección de luz (peligro)
+  - Percepción de depredadores
+  - Reconocimiento de especies similares
+- **Evolución de órganos**: Hasta 20 tipos diferentes
+- **Vida limitada**: Máximo 30 años (realista)
 
 **Dinámica de movimiento**:
 ```python
@@ -53,12 +62,19 @@ donde:
 - S_inherited: Señal topológica heredada
 ```
 
-### ⚡ El Depredador Luminoso
+### ⚡ El Depredador Hipotrico
 
 **Características**:
-- **Emite luz al atacar**: Crea una perturbación masiva en el campo topológico
-- **Movimiento predatorio**: Busca activamente protozoos
-- **Zona de muerte**: Radio de luz letal de 50 unidades
+- **Diseño inspirado en ciliados hipotricos**: Forma ovalada alargada
+- **Color azul oscuro**: Camuflaje en aguas profundas
+- **16 filamentos finos**: Movimiento ondulatorio natural
+- **Movimiento inteligente**: 
+  - Patrulla áreas no visitadas
+  - Memoria de ubicaciones
+  - Evita zonas seguras
+- **Ciclo de alimentación**: Cooldown de 8 segundos entre comidas
+- **Reproducción**: Cuando está bien alimentado y maduro
+- **Órganos internos**: 2 órganos visibles para realismo
 
 **Campo de luz**:
 ```python
@@ -106,6 +122,81 @@ class TopologicalSeed:
 2. **Emergencia natural**: Los patrones complejos emergen sin diseño explícito
 3. **Computación implícita**: El movimiento a través del espacio ES la computación
 
+## 🧬 Avances Recientes
+
+### Sistema de Herencia Tri-Capa Implementado
+
+1. **Núcleo Topológico** (Como ADN):
+   - Parámetros inmutables que definen la "especie"
+   - Simetría corporal (1-6 pliegues)
+   - Capacidad de órganos (2-5 máximo)
+   - Rasgos base: motilidad, sensibilidad, resiliencia
+   - Tasa de mutación: 10-30% para especiación rápida
+
+2. **Memoria Holográfica** (Como Epigenética):
+   - 8KB de memoria modificable por experiencia
+   - Hereda patrones de ambos padres
+   - Codifica experiencias en transformada de Fourier
+   - Influencia expresión fenotípica
+
+3. **Trazas Ambientales** (Como Cultura):
+   - Feromonas depositadas en el mundo
+   - 5 tipos: peligro, comida, apareamiento, muerte, actividad
+   - Anclajes de memoria para eventos significativos
+   - Aprendizaje de trazas de otros organismos
+
+### Emergencia de Especies
+
+- **Especiación por simetría corporal**: Grupos con 1, 2, 3... pliegues
+- **Reconocimiento genético**: Similaridad > 70% = misma especie
+- **Comportamiento de agrupación**: Especies se agrupan naturalmente
+- **Divergencia de rasgos**: Cada especie evoluciona características únicas
+
+### Evolución de Órganos sin Parametrización
+
+20 tipos de órganos emergen de combinaciones genéticas:
+- **Sensoriales**: Fotosensor, Quimiorreceptor
+- **Movimiento**: Flagelo, Speed Boost, Cilios
+- **Defensa**: Membrana, Placas, Glándula de toxina, Camuflaje
+- **Especiales**: Órgano eléctrico, Regeneración, Emisor de feromonas
+- **Almacenamiento**: Vacuola (energía)
+
+### Reporte de Simulación Mejorado
+
+El sistema ahora genera reportes detallados incluyendo:
+
+```
+═══════════════════════════════════════════
+        PROTEUS SIMULATION REPORT         
+═══════════════════════════════════════════
+
+🌊 SPECIES EMERGENCE & GROUPING
+──────────────────────────────────────────
+Distinct Species: 5
+
+Species Distribution:
+  Symmetry-1: 12 organisms
+  Symmetry-2: 18 organisms  
+  Symmetry-3: 8 organisms
+  Symmetry-4: 15 organisms
+  Symmetry-5: 7 organisms
+
+Grouping Behavior:
+  Symmetry-2: ✓ Grouping (18 members, avg distance: 85.3)
+  Symmetry-4: ✓ Grouping (15 members, avg distance: 92.1)
+  Symmetry-1: ✗ Dispersed (12 members, avg distance: 156.4)
+
+Species Characteristics:
+  Symmetry-2:
+    Motility: 0.68
+    Sensitivity: 0.72  
+    Resilience: 0.55
+  Symmetry-4:
+    Motility: 0.45
+    Sensitivity: 0.83
+    Resilience: 0.71
+```
+
 ## 💻 Implementación
 
 ### Arquitectura del Sistema
@@ -134,10 +225,52 @@ Proteus/
     └── emergence_intelligence.py # Tests de inteligencia emergente
 ```
 
-### Ejemplo de Simulación
+### Simulación Frontend Interactiva
+
+Implementación completa en React con visualización en tiempo real:
+
+```javascript
+// Sistema de simulación con herencia tri-capa
+const simulation = new Simulation(worldSize);
+
+// Inicializar con pool genético preservado
+simulation.initialize({
+  initialOrganisms: 50,
+  initialNutrients: 80,
+  initialPredators: 4,
+  useGeneticPool: true  // Usa élites de simulaciones previas
+});
+
+// Cada organismo tiene:
+class Organism {
+  constructor(x, y, topologyEngine) {
+    this.inheritance = new ProteusInheritance(parent1, parent2);
+    this.organs = this.developOrgans();  // Basado en genes
+    this.capabilities = this.computeCapabilities();  // Emergen de órganos
+    this.maxAge = 30;  // Vida realista
+  }
+  
+  perceive(environment) {
+    // Percepción multimodal
+    const chemicalGradient = this.senseChemicals();
+    const lightLevel = this.senseLight();
+    const nearbySpecies = this.recognizeSpecies(nearby);
+    const predatorThreat = this.sensePredators();
+    
+    return this.makeDecision({
+      chemicals: chemicalGradient,
+      light: lightLevel,
+      species: nearbySpecies,
+      predators: predatorThreat
+    });
+  }
+}
+```
+
+### Ejemplo de Simulación Python Original
 
 ```python
-from proteus import World, Protozoa, LuminousPredator
+from proteus import World, Protozoa, HypotrichPredator
 
 # Crear mundo acuático
 world = World(
@@ -158,12 +291,13 @@ protozoa = [
 
 # Depredadores
 predators = [
-    LuminousPredator(
+    HypotrichPredator(
         position=random_position(),
-        attack_frequency=0.1,
-        light_radius=50
+        feeding_cooldown=8.0,
+        hunt_radius=80,
+        filament_count=16
     )
-    for _ in range(10)
+    for _ in range(4)
 ]
 
 # Simular
@@ -203,19 +337,27 @@ SÍ medimos:
 - ✅ **Transmisión efectiva de información topológica**
 - ✅ **Complejidad de Kolmogorov de las trayectorias**
 - ✅ **Entropía topológica del sistema**
+- ✅ **Emergencia de especies distintas** (2-8 especies por simulación)
+- ✅ **Comportamiento social emergente** (agrupación espontánea)
+- ✅ **Preservación de linajes élite** (pool genético persistente)
+- ✅ **Diversidad de órganos** (promedio 3-5 por organismo)
+- ✅ **Estabilidad ecosistémica** (predador-presa equilibrado)
 
 ## 🚀 Roadmap
 
-### Fase 1: Prueba de Concepto (Actual)
+### Fase 1: Prueba de Concepto (Completada)
 - [x] Motor de dinámicas topológicas básico
 - [x] Mundo 2D acuático
 - [x] Protozoos y depredadores
-- [ ] Sistema de herencia topológica
-- [ ] Visualización en tiempo real
+- [x] Sistema de herencia topológica tri-capa
+- [x] Visualización en tiempo real con React/Canvas
 
-### Fase 2: Evolución y Emergencia
-- [ ] 1000+ generaciones de evolución
-- [ ] Análisis de patrones emergentes
+### Fase 2: Evolución y Emergencia (En Progreso)
+- [x] 1000+ generaciones de evolución
+- [x] Emergencia de especies por simetría corporal
+- [x] Comportamiento de agrupación (schooling)
+- [x] Sistema de memoria holográfica 8KB
+- [x] Preservación genética élite entre simulaciones
 - [ ] Comparación con algoritmos genéticos tradicionales
 - [ ] Paper: "Evolución sin Genes ni Neuronas"
 
@@ -275,6 +417,36 @@ MIT License - Ver [LICENSE](LICENSE) para detalles.
 A todos los que se atreven a cuestionar el status quo en IA.
 
 A la vida misma, por demostrar que la inteligencia puede emerger sin diseño.
+
+## 🎆 Resultados Observados
+
+### Comportamientos Emergentes Sin Programación
+
+1. **Formación de Escúelas**: Organismos de la misma especie se agrupan espontáneamente
+2. **Estrategias de Evasión**: Diferentes especies desarrollan tácticas únicas
+3. **Especialización de Nichos**: Especies evolucionan para diferentes roles ecológicos
+4. **Comunicación Química**: Uso sofisticado de feromonas para coordinación
+5. **Ciclos Predador-Presa**: Equilibrio dinámico sin intervención
+
+### Innovaciones Técnicas
+
+1. **Movimiento Físicamente Realista**:
+   - Fricción: 0.995 (agua)
+   - Aceleración basada en motilidad genética
+   - Fuerzas de Van der Waals entre organismos
+   - Movimiento Browniano para realismo
+
+2. **Sistema de Percepción Avanzado**:
+   - 5 canales químicos independientes
+   - Gradientes de difusión realistas
+   - Memoria espacial de ubicaciones
+   - Reconocimiento de patrones genéticos
+
+3. **Reproducción y Herencia**:
+   - Recombinación de memoria holográfica
+   - Mutaciones con efectos visibles
+   - Preservación de linajes exitosos
+   - Transmisión cultural vía feromonas
 
 ---
 

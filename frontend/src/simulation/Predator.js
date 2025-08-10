@@ -12,13 +12,13 @@ export class Predator {
     // Smooth movement
     this.smoothPosition = { x, y };
     
-    // Properties
-    this.baseSize = 7.2;  // Reduced by 10% from 8
+    // Properties - 50% larger
+    this.baseSize = 8.424;  // 50% larger than 5.616
     this.size = this.baseSize;
-    this.maxSize = 13.5;  // Reduced by 10% from 15
-    this.speed = 1.5;
-    this.huntRadius = 120; // Increased from 100
-    this.attackRadius = 15;
+    this.maxSize = 15.795;  // 50% larger than 10.53
+    this.speed = 0.4;  // Much slower to match protozoa
+    this.huntRadius = 120; // Increased for larger size
+    this.attackRadius = 12;  // Increased for larger size
     this.energy = 1.5; // Start with more energy
     this.maxEnergy = 2.5; // Increased max energy
     this.alive = true;
@@ -26,11 +26,23 @@ export class Predator {
     this.lastMealTime = 0;
     this.growthFactor = 1.0;
     
+    // Natural movement variables
+    this.movementDirection = { x: Math.random() - 0.5, y: Math.random() - 0.5 };
+    this.directionChangeTimer = 0;
+    this.directionChangePeriod = 3 + Math.random() * 4; // Change direction every 3-7 seconds
+    this.movementMomentum = { x: 0, y: 0 };
+    
     // Visual
     this.color = '#FF4444';
     this.glowIntensity = 0.5;
     this.lightFlash = 0;
+    this.lightIntensity = 2.0; // Brightness of predator's bioluminescence
     this.tentacles = this.generateTentacles();
+    
+    // Blinking effect like protozoa
+    this.blinkPhase = Math.random() * Math.PI * 2;
+    this.blinkFrequency = 0.5 + Math.random() * 1.5; // Variable blink speed
+    this.opacity = 1.0;
     
     // Memory and behavior
     this.memory = {
@@ -46,7 +58,7 @@ export class Predator {
   
   generateTentacles() {
     const tentacles = [];
-    const count = 6;
+    const count = 3; // Reduced from 6 to 3
     
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2;
@@ -73,6 +85,10 @@ export class Predator {
     // Update light flash
     this.lightFlash = Math.max(0, this.lightFlash - deltaTime * 2);
     
+    // Update blinking effect
+    this.blinkPhase += deltaTime * this.blinkFrequency;
+    this.opacity = 0.4 + 0.6 * Math.abs(Math.sin(this.blinkPhase));
+    
     // Update size based on energy and age
     this.updateSize();
     
@@ -82,39 +98,51 @@ export class Predator {
     // Find nearest organism (not in safe zone)
     const target = this.findNearestOrganism(organisms, safeZones);
     
+    // Movement decision based on target (like organism perception/decision)
+    const decision = { x: 0, y: 0 };
+    
     if (target && target.distance < this.huntRadius && !inSafeZone) {
-      // Hunt mode
+      // Hunt mode - similar to organism chemotaxis
       const dx = target.organism.position.x - this.position.x;
       const dy = target.organism.position.y - this.position.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       
-      if (dist > 0) {
-        // Check if target would lead us into safe zone
-        const nextX = this.position.x + (dx / dist) * this.speed * deltaTime;
-        const nextY = this.position.y + (dy / dist) * this.speed * deltaTime;
+      if (dist > 0 && !this.wouldEnterSafeZone(this.position.x + dx/dist, this.position.y + dy/dist, safeZones)) {
+        // Signal strength based on distance (like chemical gradient)
+        const signalStrength = (1 - target.distance / this.huntRadius) * 2;
         
-        if (!this.wouldEnterSafeZone(nextX, nextY, safeZones)) {
-          // Accelerate towards target
-          const huntSpeed = this.speed * (1 + (1 - target.distance / this.huntRadius));
-          this.velocity.x += (dx / dist) * huntSpeed * deltaTime;
-          this.velocity.y += (dy / dist) * huntSpeed * deltaTime;
-          
-          // Increase glow when hunting
-          this.glowIntensity = Math.min(1.0, this.glowIntensity + deltaTime);
-          
-          // Flash light periodically when hunting
-          if (Math.random() < deltaTime * 2) {
-            this.lightFlash = 1.0;
-          }
-        } else {
-          // Move away from safe zone
-          this.avoidSafeZone(safeZones, deltaTime);
+        // Movement decision scaled by hunger (like organisms)
+        const hungerLevel = Math.min(1, (this.age - this.lastMealTime) / 20);
+        const urgency = signalStrength * (1 + hungerLevel);
+        
+        decision.x = (dx / dist) * urgency * 1.5; // Much slower hunting
+        decision.y = (dy / dist) * urgency * 1.5; // Much slower hunting
+        
+        // Increase glow when hunting
+        this.glowIntensity = Math.min(1.0, this.glowIntensity + deltaTime);
+        
+        // Flash light periodically when hunting
+        if (Math.random() < deltaTime * 2) {
+          this.lightFlash = 1.0;
         }
+      } else {
+        // Move away from safe zone
+        this.avoidSafeZone(safeZones, deltaTime);
       }
       
-      // Attack if close enough
+      // Attack if close enough (with feeding cooldown)
       if (target.distance < this.attackRadius) {
-        let damage = deltaTime * 1.5 * this.growthFactor; // Base damage
+        // Check feeding cooldown - can't eat constantly
+        const timeSinceLastMeal = this.age - this.lastMealTime;
+        const feedingCooldown = 8.0; // 8 seconds between meals - more time for organisms
+        
+        if (timeSinceLastMeal < feedingCooldown) {
+          // Still digesting - can chase but not damage/feed
+          this.glowIntensity = 0.5; // Dimmer when digesting
+          return;
+        }
+        
+        let damage = deltaTime * 0.8 * this.growthFactor; // Reduced damage
         
         // Protection reduces damage
         const protection = target.organism.capabilities.protection || 0;
@@ -190,10 +218,11 @@ export class Predator {
             }
           }
         } else {
-          // Local search pattern
-          const searchAngle = this.age * 0.5;
-          this.velocity.x += Math.cos(searchAngle) * 0.3 * deltaTime;
-          this.velocity.y += Math.sin(searchAngle) * 0.3 * deltaTime;
+          // No prey - random walk like organisms  
+          const angle = Math.random() * Math.PI * 2;
+          const metabolicRate = Math.max(0.3, this.energy);
+          decision.x = Math.cos(angle) * metabolicRate * 0.8; // Very slow wandering
+          decision.y = Math.sin(angle) * metabolicRate * 0.8; // Very slow wandering
         }
         
         // Remember this area as visited
@@ -204,24 +233,43 @@ export class Predator {
       this.glowIntensity = Math.max(0.3, this.glowIntensity - deltaTime * 0.5);
     }
     
-    // Apply drag
-    this.velocity.x *= 0.95;
-    this.velocity.y *= 0.95;
+    // Apply movement decision like organisms - match protozoa speed
+    const maxSpeed = this.speed * 80; // Match organism scale (0.4 * 80 = 32, vs organism 0.6 * 200 = 120)
+    const acceleration = 10 + this.speed * 50; // Match organism acceleration
+    
+    // Add momentum like organisms
+    if (!this.movementMomentum) this.movementMomentum = { x: 0, y: 0 };
+    const momentumDecay = 0.9;
+    this.movementMomentum.x = this.movementMomentum.x * momentumDecay + decision.x * 0.3;
+    this.movementMomentum.y = this.movementMomentum.y * momentumDecay + decision.y * 0.3;
+    
+    // Combine decision with momentum
+    const finalDecision = {
+      x: decision.x + this.movementMomentum.x,
+      y: decision.y + this.movementMomentum.y
+    };
+    
+    // Apply acceleration
+    this.velocity.x += finalDecision.x * acceleration * deltaTime;
+    this.velocity.y += finalDecision.y * acceleration * deltaTime;
+    
+    // Natural friction like organisms
+    this.velocity.x *= 0.995;
+    this.velocity.y *= 0.995;
     
     // Speed limit
     const speed = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2);
-    const maxSpeed = this.speed * 2;
     if (speed > maxSpeed) {
       this.velocity.x = (this.velocity.x / speed) * maxSpeed;
       this.velocity.y = (this.velocity.y / speed) * maxSpeed;
     }
     
-    // Update position
-    this.position.x += this.velocity.x;
-    this.position.y += this.velocity.y;
+    // Update position with deltaTime like organisms
+    this.position.x += this.velocity.x * deltaTime;
+    this.position.y += this.velocity.y * deltaTime;
     
-    // Smooth visual position
-    const smoothing = 0.2;
+    // Smooth visual position - less smoothing for more responsive movement
+    const smoothing = 0.4;
     this.smoothPosition.x += (this.position.x - this.smoothPosition.x) * smoothing;
     this.smoothPosition.y += (this.position.y - this.smoothPosition.y) * smoothing;
     
@@ -270,7 +318,7 @@ export class Predator {
     if (hungerLevel > 0.7) {
       // Desperate hunting - increased speed and hunt radius
       this.huntRadius = 100 + hungerLevel * 50;
-      this.speed = 1.5 + hungerLevel * 0.5;
+      this.speed = 0.8 + hungerLevel * 0.3;  // Keep natural speed scaling
       this.glowIntensity = Math.min(1.0, this.glowIntensity + deltaTime * hungerLevel);
     }
   }
@@ -284,21 +332,21 @@ export class Predator {
     this.growthFactor = 0.5 + energyFactor * 0.5 + ageFactor * 0.5;
     this.size = Math.min(this.maxSize, this.baseSize * this.growthFactor);
     
-    // Update attack radius based on size
-    this.attackRadius = 10 + (this.size - this.baseSize) * 0.5;
+    // Update attack radius based on size (scaled for 50% larger predator)
+    this.attackRadius = 12 + (this.size - this.baseSize) * 0.5;
   }
   
   canReproduce() {
     // Can reproduce when well-fed, mature, and sufficient energy
-    return this.energy > 1.5 && 
-           this.age > 20 && 
-           this.growthFactor > 0.8 &&
-           this.lastMealTime > this.age - 10; // Recently fed
+    return this.energy > 1.2 && // Lowered from 1.5
+           this.age > 15 && // Lowered from 20
+           this.growthFactor > 0.7 && // Lowered from 0.8
+           (this.age - this.lastMealTime) < 20; // More lenient - within last 20 time units
   }
   
   reproduce() {
     // Create offspring at reduced energy cost
-    this.energy -= 0.5;
+    this.energy -= 0.3; // Reduced cost from 0.5
     
     // Offspring spawns near parent
     const angle = Math.random() * Math.PI * 2;
@@ -307,8 +355,9 @@ export class Predator {
     const y = this.position.y + Math.sin(angle) * distance;
     
     const offspring = new Predator(x, y, this.worldSize);
-    offspring.energy = 0.5; // Start with less energy
+    offspring.energy = 0.8; // Start with more energy
     offspring.size = this.baseSize * 0.8; // Start smaller
+    offspring.lastMealTime = offspring.age; // Start as if recently fed
     
     return offspring;
   }
@@ -379,15 +428,16 @@ export class Predator {
     });
     
     if (nearestZone && nearestZone.dist < nearestZone.zone.radius + 50) {
-      // Move away from safe zone
-      const force = 3.0 * deltaTime;
+      // Move away from safe zone with stronger force
+      const force = 50.0; // Much stronger repulsion force
       if (nearestZone.dist > 0) {
-        this.velocity.x += (nearestZone.dx / nearestZone.dist) * force;
-        this.velocity.y += (nearestZone.dy / nearestZone.dist) * force;
+        // Override velocity completely to escape
+        this.velocity.x = (nearestZone.dx / nearestZone.dist) * force;
+        this.velocity.y = (nearestZone.dy / nearestZone.dist) * force;
       } else {
-        // If at center, move randomly
-        this.velocity.x += (Math.random() - 0.5) * force * 2;
-        this.velocity.y += (Math.random() - 0.5) * force * 2;
+        // If at center, move randomly with strong force
+        this.velocity.x = (Math.random() - 0.5) * force * 2;
+        this.velocity.y = (Math.random() - 0.5) * force * 2;
       }
     }
   }

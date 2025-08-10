@@ -1,0 +1,181 @@
+{
+  "zero_shot": {
+    "accuracy": 0.4,
+    "correct": 4,
+    "total_puzzles": 10,
+    "by_category": {
+      "color_mapping": {
+        "correct": 2,
+        "total": 2,
+        "accuracy": 1.0
+      },
+      "pattern_replication": {
+        "correct": 0,
+        "total": 2,
+        "accuracy": 0.0
+      },
+      "gravity": {
+        "correct": 0,
+        "total": 2,
+        "accuracy": 0.0
+      },
+      "counting": {
+        "correct": 2,
+        "total": 2,
+        "accuracy": 1.0
+      },
+      "reflection": {
+        "correct": 0,
+        "total": 2,
+        "accuracy": 0.0
+      }
+    },
+    "avg_time_ms": 0.6568,
+    "total_time_s": 0.008269,
+    "avg_confidence": 0.8600000000000001,
+    "confidence_correlation": 0.40824829046386324,
+    "rules_detected": {
+      "color_mapping": 6,
+      "line_drawing": 2,
+      "counting": 2
+    },
+    "avg_reasoning_steps": 4.6
+  },
+  "ablation": {
+    "baseline": {
+      "accuracy": 0.4,
+      "correct": 2,
+      "total_puzzles": 5,
+      "by_category": {
+        "color_mapping": {
+          "correct": 2,
+          "total": 2,
+          "accuracy": 1.0
+        },
+        "pattern_replication": {
+          "correct": 0,
+          "total": 2,
+          "accuracy": 0.0
+        },
+        "gravity": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        }
+      },
+      "avg_time_ms": 0.21839999999999998,
+      "total_time_s": 0.001806,
+      "avg_confidence": 0.8200000000000001,
+      "confidence_correlation": 0.6666666666666666,
+      "rules_detected": {
+        "color_mapping": 3,
+        "line_drawing": 2
+      },
+      "avg_reasoning_steps": 3.8
+    },
+    "with_augmentation": {
+      "accuracy": 0.4,
+      "correct": 2,
+      "total_puzzles": 5,
+      "by_category": {
+        "color_mapping": {
+          "correct": 2,
+          "total": 2,
+          "accuracy": 1.0
+        },
+        "pattern_replication": {
+          "correct": 0,
+          "total": 2,
+          "accuracy": 0.0
+        },
+        "gravity": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        }
+      },
+      "avg_time_ms": 0.3044,
+      "total_time_s": 0.001951,
+      "avg_confidence": 0.8200000000000001,
+      "confidence_correlation": 0.6666666666666666,
+      "rules_detected": {
+        "color_mapping": 3,
+        "line_drawing": 2
+      },
+      "avg_reasoning_steps": 4.8,
+      "improvement": 0.0,
+      "relative_improvement": 0.0
+    },
+    "with_hierarchical": {
+      "accuracy": 0.4,
+      "correct": 2,
+      "total_puzzles": 5,
+      "by_category": {
+        "color_mapping": {
+          "correct": 2,
+          "total": 2,
+          "accuracy": 1.0
+        },
+        "pattern_replication": {
+          "correct": 0,
+          "total": 2,
+          "accuracy": 0.0
+        },
+        "gravity": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        }
+      },
+      "avg_time_ms": 0.10939999999999998,
+      "total_time_s": 0.000903,
+      "avg_confidence": 0.8200000000000001,
+      "confidence_correlation": 0.6666666666666666,
+      "rules_detected": {
+        "color_mapping": 3,
+        "line_drawing": 2
+      },
+      "avg_reasoning_steps": 3.8,
+      "improvement": 0.0,
+      "relative_improvement": 0.0
+    },
+    "full_system": {
+      "accuracy": 0.4,
+      "correct": 2,
+      "total_puzzles": 5,
+      "by_category": {
+        "color_mapping": {
+          "correct": 2,
+          "total": 2,
+          "accuracy": 1.0
+        },
+        "pattern_replication": {
+          "correct": 0,
+          "total": 2,
+          "accuracy": 0.0
+        },
+        "gravity": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        }
+      },
+      "avg_time_ms": 0.3346,
+      "total_time_s": 0.00224,
+      "avg_confidence": 0.8200000000000001,
+      "confidence_correlation": 0.6666666666666666,
+      "rules_detected": {
+        "color_mapping": 3,
+        "line_drawing": 2
+      },
+      "avg_reasoning_steps": 4.8,
+      "improvement": 0.0,
+      "relative_improvement": 0.0
+    }
+  },
+  "dataset_info": {
+    "total_puzzles": 25,
+    "train_size": 15,
+    "test_size": 10
+  }
+}

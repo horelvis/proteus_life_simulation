@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import styled from 'styled-components';
 import AppLocal from './AppLocal';
 import AppBackend from './AppBackend';
+import AppAC from './AppAC';
 
 const ModeSelector = styled.div`
   position: fixed;
@@ -33,11 +34,11 @@ const ModeButton = styled.button`
 `;
 
 function App() {
-  const [mode, setMode] = useState('local');
+  const [mode, setMode] = useState('ac'); // Ahora inicia en modo AC
 
   return (
     <>
-      {mode === 'local' ? <AppLocal /> : <AppBackend />}
+      {mode === 'local' ? <AppLocal /> : mode === 'backend' ? <AppBackend /> : <AppAC />}
       <ModeSelector>
         <ModeButton 
           $active={mode === 'local'} 
@@ -50,6 +51,12 @@ function App() {
           onClick={() => setMode('backend')}
         >
           GPU Backend (Vispy)
+        </ModeButton>
+        <ModeButton 
+          $active={mode === 'ac'} 
+          onClick={() => setMode('ac')}
+        >
+          AC Mode (ARC)
         </ModeButton>
       </ModeSelector>
     </>
