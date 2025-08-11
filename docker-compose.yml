@@ -1,5 +1,6 @@
 # Docker Compose para PROTEUS con acceso desde intranet
 # Configurar variables en archivo .env
+version: '3.8'
 
 services:
   # Backend unificado con GPU/Vispy
@@ -17,22 +18,32 @@ services:
       - PYTHONUNBUFFERED=1
       - DISPLAY=:99
       - CORS_ORIGINS=${CORS_ORIGINS:-["*"]}
+      - SCHEME=${SCHEME:-https}
+      - HOST=${HOST:-three.arcprize.org}
+      - PORT=${PORT:-443}
+      - ARC_API_KEY=${ARC_API_KEY}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - CUDA_VISIBLE_DEVICES=0
     volumes:
       # Para desarrollo - montar código fuente
-      - ./backend/proteus:/app/proteus:ro
-      - ./backend/app:/app/app:ro
-      - ./backend/arc:/app/arc:ro
-      - ./backend/unified_server.py:/app/unified_server.py:ro
-      - ./backend/main.py:/app/main.py:ro
+      - ./backend/proteus:/app/proteus
+      - ./backend/app:/app/app
+      - ./backend/arc:/app/arc
+      - ./backend/unified_server.py:/app/unified_server.py
+      - ./backend/main.py:/app/main.py
+      - ./.env:/app/.env:ro
     restart: unless-stopped
-    # Para soporte GPU (requiere nvidia-docker)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    # Soporte GPU con Docker Compose v3.8+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Runtime nvidia requiere nvidia-docker instalado
+    # runtime: nvidia
 
   # Frontend React
   proteus-frontend:
@@ -49,10 +60,12 @@ services:
       - REACT_APP_BACKEND_URL=${REACT_APP_BACKEND_URL:-http://localhost:8000}
       - REACT_APP_WS_URL=${REACT_APP_WS_URL:-ws://localhost:8000}
       - REACT_APP_ARC_WS_URL=${REACT_APP_ARC_WS_URL:-ws://localhost:8765}
+    volumes:
+      # Para desarrollo - montar build compilado
+      - ./frontend/build:/usr/share/nginx/html:ro
     depends_on:
       - proteus-backend
     restart: unless-stopped
-    # No necesitamos extra_hosts para acceso en intranet
 
   # Servicios originales (legacy)
   proteus:

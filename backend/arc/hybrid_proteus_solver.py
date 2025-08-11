@@ -247,6 +247,8 @@ class HybridProteusARCSolver(ARCSolverPython):
             if detector:
                 rule = detector(input_grid, output_grid)
                 if rule and rule['confidence'] > 0.7:
+                    # Asegurar que la regla tenga el tipo correcto
+                    rule['type'] = rule_type.value
                     # Añadir información topológica
                     rule['topology_score'] = score
                     rule['topology_analysis'] = {
@@ -257,7 +259,17 @@ class HybridProteusARCSolver(ARCSolverPython):
                     return rule
         
         # Si ninguna regla específica funciona, usar la detección original
-        return super().detect_rule(input_grid, output_grid)
+        base_rule = super().detect_rule(input_grid, output_grid)
+        
+        # Asegurar formato correcto de la regla
+        if base_rule and not isinstance(base_rule.get('type'), str):
+            # Si 'type' no es string, intentar convertirlo
+            if hasattr(base_rule.get('type'), 'value'):
+                base_rule['type'] = base_rule['type'].value
+            elif base_rule.get('type') is not None:
+                base_rule['type'] = str(base_rule['type'])
+        
+        return base_rule
     
     def _get_detector_for_type(self, rule_type: TransformationType):
         """Obtiene el detector para un tipo de regla específico"""
@@ -306,8 +318,8 @@ class HybridProteusARCSolver(ARCSolverPython):
                 transformation_patterns.append(rule)
                 steps.append({
                     'type': 'rule_detection',
-                    'description': f'Ejemplo {i+1}: {rule["type"]} '
-                                  f'(confianza: {rule["confidence"]:.2f}, '
+                    'description': f'Ejemplo {i+1}: {rule.get("type", "Unknown")} '
+                                  f'(confianza: {rule.get("confidence", 0):.2f}, '
                                   f'topología: {rule.get("topology_score", 0):.2f})',
                     'rule': rule
                 })
@@ -320,11 +332,11 @@ class HybridProteusARCSolver(ARCSolverPython):
             
             steps.append({
                 'type': 'rule_selection',
-                'description': f'Seleccionada: {best_rule["type"]} basado en análisis topológico'
+                'description': f'Seleccionada: {best_rule.get("type", "Unknown")} basado en análisis topológico'
             })
             
-            # Aplicar transformación
-            solution = self._apply_rule(test_input, best_rule)
+            # Aplicar transformación - apply_rule espera (rule, input_grid)
+            solution = self.apply_rule(best_rule, test_input)
             
             steps.append({
                 'type': 'transformation',

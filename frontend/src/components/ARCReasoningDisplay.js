@@ -10,6 +10,9 @@ export const ARCReasoningDisplay = ({
   isCorrect = null 
 }) => {
   const [expandedSteps, setExpandedSteps] = useState(new Set());
+  
+  // Asegurar que reasoning siempre sea un array
+  const reasoningSteps = Array.isArray(reasoning) ? reasoning : [];
 
   const toggleStep = (index) => {
     const newExpanded = new Set(expandedSteps);
@@ -159,7 +162,7 @@ export const ARCReasoningDisplay = ({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' }}>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#fff' }}>
-              {reasoning.length}
+              {reasoningSteps.length}
             </div>
             <div style={{ fontSize: '12px', color: '#888' }}>
               Pasos Totales
@@ -167,7 +170,7 @@ export const ARCReasoningDisplay = ({
           </div>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#2ECC40' }}>
-              {reasoning.filter(s => s.type === 'pattern').length}
+              {reasoningSteps.filter(s => s && s.type === 'pattern').length}
             </div>
             <div style={{ fontSize: '12px', color: '#888' }}>
               Patrones Detectados
@@ -175,7 +178,7 @@ export const ARCReasoningDisplay = ({
           </div>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#B10DC9' }}>
-              {reasoning.filter(s => s.type === 'rule').length}
+              {reasoningSteps.filter(s => s && s.type === 'rule').length}
             </div>
             <div style={{ fontSize: '12px', color: '#888' }}>
               Reglas Aplicadas
@@ -183,7 +186,7 @@ export const ARCReasoningDisplay = ({
           </div>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#FF851B' }}>
-              {reasoning.filter(s => s.type === 'transformation').length}
+              {reasoningSteps.filter(s => s && s.type === 'transformation').length}
             </div>
             <div style={{ fontSize: '12px', color: '#888' }}>
               Transformaciones

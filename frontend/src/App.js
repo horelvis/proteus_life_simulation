@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import styled from 'styled-components';
 import AppBackend from './AppBackend';
 import AppAC from './AppAC';
+import ARCSolvingProcess from './components/ARCSolvingProcess';
+import ARCProcessAnimation from './components/ARCProcessAnimation';
+import ARCTopologicalView from './components/ARCTopologicalView';
 
 const ModeSelector = styled.div`
   position: fixed;
@@ -37,7 +40,10 @@ function App() {
 
   return (
     <>
-      {mode === 'backend' ? <AppBackend /> : <AppAC />}
+      {mode === 'backend' && <AppBackend />}
+      {mode === 'ac' && <AppAC />}
+      {mode === 'solving' && <ARCSolvingProcess />}
+      {mode === 'topological' && <ARCTopologicalView />}
       <ModeSelector>
         <ModeButton 
           $active={mode === 'backend'} 
@@ -50,6 +56,18 @@ function App() {
           onClick={() => setMode('ac')}
         >
           AC Mode (ARC)
+        </ModeButton>
+        <ModeButton 
+          $active={mode === 'solving'} 
+          onClick={() => setMode('solving')}
+        >
+          ARC Solving Process
+        </ModeButton>
+        <ModeButton 
+          $active={mode === 'topological'} 
+          onClick={() => setMode('topological')}
+        >
+          Topological Solver
         </ModeButton>
       </ModeSelector>
     </>
