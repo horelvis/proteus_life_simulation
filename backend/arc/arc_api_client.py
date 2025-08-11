@@ -50,6 +50,61 @@ class ARCApiClient:
         """Cierra la sesión al salir del contexto"""
         if self.session:
             await self.session.close()
+    
+    def reset_game(self, game_id: str, card_id: str = "proteus_agent") -> Optional[Dict]:
+        """
+        Resetea un juego específico (versión síncrona)
+        
+        Args:
+            game_id: ID del juego
+            card_id: ID de la tarjeta/agente
+            
+        Returns:
+            Frame inicial del juego o None si falla
+        """
+        # Por ahora retornar datos de prueba
+        # En producción, hacer llamada real a la API
+        logger.info(f"Reset game {game_id} with card {card_id}")
+        
+        return {
+            'guid': 'test-guid-' + datetime.now().isoformat(),
+            'state': 'ready',
+            'game_id': game_id,
+            'train': [
+                {
+                    'input': [[1, 2], [3, 4]],
+                    'output': [[2, 3], [4, 5]]
+                }
+            ],
+            'test': [
+                {'input': [[5, 6], [7, 8]]}
+            ]
+        }
+    
+    def submit_solution(self, game_id: str, solution: List[List[int]]) -> Dict:
+        """
+        Envía una solución al servidor (versión síncrona)
+        
+        Args:
+            game_id: ID del juego
+            solution: Solución como lista de listas
+            
+        Returns:
+            Respuesta del servidor
+        """
+        logger.info(f"Submitting solution for game {game_id}")
+        logger.debug(f"Solution: {solution}")
+        
+        # Por ahora retornar respuesta simulada
+        # En producción, hacer llamada real a la API
+        import random
+        correct = random.random() > 0.7  # 30% de probabilidad de éxito
+        
+        return {
+            'correct': correct,
+            'game_id': game_id,
+            'timestamp': datetime.now().isoformat()
+        }
             
     async def get_game_info(self, game_id: str = 'ls20') -> Dict[str, Any]:
         """
