@@ -23,7 +23,7 @@ function AppAC() {
           borderRadius: '4px',
           fontSize: '14px'
         }}>
-          <strong>🐍 Backend Python Activo</strong> - Conectando con servidor WebSocket en ws://localhost:8765
+          <strong>🐍 Backend Python Activo</strong> - Conectando con servidor WebSocket
         </p>
       </header>
 

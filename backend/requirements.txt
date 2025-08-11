@@ -17,6 +17,8 @@ websockets==12.0
 pydantic==2.7.4
 python-multipart==0.0.9
 aiofiles==23.2.1
+requests==2.31.0
+aiohttp==3.9.1
 
 # Image processing (for ARC)
 pillow==10.0.0

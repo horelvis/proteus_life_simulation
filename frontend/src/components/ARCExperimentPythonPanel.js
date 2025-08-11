@@ -4,11 +4,15 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ARCWebSocketClient } from '../services/ARCWebSocketClient';
-import { ARCReasoningVisualization } from './ARCReasoningVisualization';
+import { ARCPuzzleVisualization } from './ARCPuzzleVisualization';
+import { ARCReasoningDisplay } from './ARCReasoningDisplay';
+import { ARCBenchmarkDisplay } from './ARCBenchmarkDisplay';
+import { ARCGameMode } from './ARCGameMode';
 
 export const ARCExperimentPythonPanel = () => {
   const [conectado, setConectado] = useState(false);
   const [cargando, setCargando] = useState(false);
+  const [cargandoPuzzles, setCargandoPuzzles] = useState(false);
   const [puzzles, setPuzzles] = useState([]);
   const [puzzleActual, setPuzzleActual] = useState(null);
   const [resultados, setResultados] = useState({});
@@ -20,6 +24,9 @@ export const ARCExperimentPythonPanel = () => {
     porcentajeExito: 0,
     tiempoPromedio: 0
   });
+  const [benchmarks, setBenchmarks] = useState(null);
+  const [useOfficial, setUseOfficial] = useState(true);
+  const [gameMode, setGameMode] = useState(false);
 
   const wsClient = useRef(null);
 
@@ -33,10 +40,24 @@ export const ARCExperimentPythonPanel = () => {
       setConectado(true);
     });
 
+    wsClient.current.on('loading', (msg) => {
+      console.log('Cargando:', msg.message);
+      setCargandoPuzzles(true);
+    });
+
     wsClient.current.on('puzzles_loaded', (msg) => {
       console.log('Puzzles cargados:', msg.count);
+      console.log('Estructura de puzzles:', msg.puzzles);
+      if (msg.puzzles && msg.puzzles.length > 0) {
+        console.log('Primer puzzle:', msg.puzzles[0]);
+        console.log('Train del primer puzzle:', msg.puzzles[0].train);
+      }
       setPuzzles(msg.puzzles);
       setEstadisticas(prev => ({ ...prev, totalPuzzles: msg.count }));
+      if (msg.benchmarks) {
+        setBenchmarks(msg.benchmarks);
+      }
+      setCargandoPuzzles(false);
     });
 
     wsClient.current.on('solving_start', (msg) => {
@@ -106,6 +127,8 @@ export const ARCExperimentPythonPanel = () => {
 
     wsClient.current.on('error', (msg) => {
       console.error('Error del servidor:', msg.message);
+      setCargandoPuzzles(false);
+      setCargando(false);
       alert(`Error: ${msg.message}`);
     });
 
@@ -135,7 +158,11 @@ export const ARCExperimentPythonPanel = () => {
       return;
     }
 
-    wsClient.current.loadPuzzles('training', 10);
+    wsClient.current.send('load_puzzles', {
+      puzzle_set: 'training',
+      count: 10,
+      use_official: useOfficial
+    });
   };
 
   const resolverPuzzle = (puzzle) => {
@@ -186,6 +213,22 @@ export const ARCExperimentPythonPanel = () => {
     wsClient.current.exportVisualization(puzzleId, formato);
   };
 
+  if (gameMode) {
+    return (
+      <div style={{
+        backgroundColor: '#1a1a1a',
+        color: 'white',
+        padding: '20px',
+        minHeight: '100vh'
+      }}>
+        <ARCGameMode 
+          webSocketClient={wsClient.current}
+          onBack={() => setGameMode(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div style={{
       backgroundColor: '#1a1a1a',
@@ -214,11 +257,28 @@ export const ARCExperimentPythonPanel = () => {
         </div>
       </div>
 
+      {/* Selector de puzzles */}
+      <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+        <label style={{
+          marginRight: '20px',
+          fontSize: '14px',
+          color: '#7FDBFF'
+        }}>
+          <input
+            type="checkbox"
+            checked={useOfficial}
+            onChange={(e) => setUseOfficial(e.target.checked)}
+            style={{ marginRight: '5px' }}
+          />
+          Usar Puzzles Oficiales de ARC Prize
+        </label>
+      </div>
+
       {/* Controles principales */}
       <div style={{ textAlign: 'center', marginBottom: '30px' }}>
         <button
           onClick={cargarPuzzles}
-          disabled={!conectado || cargando}
+          disabled={!conectado || cargando || cargandoPuzzles}
           style={{
             padding: '10px 20px',
             fontSize: '16px',
@@ -227,11 +287,11 @@ export const ARCExperimentPythonPanel = () => {
             border: 'none',
             borderRadius: '5px',
             margin: '5px',
-            cursor: conectado && !cargando ? 'pointer' : 'not-allowed',
-            opacity: conectado && !cargando ? 1 : 0.5
+            cursor: conectado && !cargando && !cargandoPuzzles ? 'pointer' : 'not-allowed',
+            opacity: conectado && !cargando && !cargandoPuzzles ? 1 : 0.5
           }}
         >
-          📚 Cargar Puzzles
+          {cargandoPuzzles ? '⏳ Cargando...' : '📚 Cargar Puzzles'}
         </button>
 
         <button
@@ -253,6 +313,24 @@ export const ARCExperimentPythonPanel = () => {
         </button>
 
         <button
+          onClick={() => setGameMode(true)}
+          disabled={!conectado}
+          style={{
+            padding: '10px 20px',
+            fontSize: '16px',
+            backgroundColor: '#FF851B',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            margin: '5px',
+            cursor: conectado ? 'pointer' : 'not-allowed',
+            opacity: conectado ? 1 : 0.5
+          }}
+        >
+          🎮 Modo Juego
+        </button>
+
+        <button
           onClick={verificarIntegridad}
           disabled={!conectado || cargando}
           style={{
@@ -270,6 +348,14 @@ export const ARCExperimentPythonPanel = () => {
           🔍 Verificar Integridad
         </button>
       </div>
+
+      {/* Benchmarks */}
+      {benchmarks && (
+        <ARCBenchmarkDisplay 
+          benchmarks={benchmarks} 
+          currentScore={estadisticas.porcentajeExito / 100}
+        />
+      )}
 
       {/* Estadísticas */}
       {estadisticas.totalPuzzles > 0 && (
@@ -293,10 +379,61 @@ export const ARCExperimentPythonPanel = () => {
       {puzzles.length > 0 && (
         <div style={{ marginBottom: '30px' }}>
           <h3>Puzzles Cargados:</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '20px' }}>
             {puzzles.map(puzzle => {
               const resultado = resultados[puzzle.id];
               const estado = resultado ? (resultado.correcto ? '✅' : '❌') : '⏳';
+              
+              // Renderizar mini grid del primer ejemplo de entrenamiento
+              const renderMiniGrid = (grid, maxSize = 10) => {
+                if (!grid || !Array.isArray(grid)) {
+                  console.log('Grid no válido:', grid);
+                  return null;
+                }
+                
+                const height = Math.min(grid.length, maxSize);
+                const width = Math.min(grid[0]?.length || 0, maxSize);
+                const cellSize = 15;
+                
+                // Paleta de colores ARC
+                const colors = {
+                  0: '#000000', 1: '#0074D9', 2: '#FF4136', 3: '#2ECC40',
+                  4: '#FFDC00', 5: '#AAAAAA', 6: '#F012BE', 7: '#FF851B',
+                  8: '#7FDBFF', 9: '#870C25'
+                };
+                
+                return (
+                  <div style={{
+                    display: 'inline-block',
+                    border: '1px solid #444',
+                    borderRadius: '3px',
+                    padding: '2px',
+                    backgroundColor: '#1a1a1a'
+                  }}>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: `repeat(${width}, ${cellSize}px)`,
+                      gridTemplateRows: `repeat(${height}, ${cellSize}px)`,
+                      gap: '1px',
+                      backgroundColor: '#333'
+                    }}>
+                      {grid.slice(0, height).map((row, i) => 
+                        row.slice(0, width).map((cell, j) => (
+                          <div
+                            key={`${i}-${j}`}
+                            style={{
+                              width: cellSize,
+                              height: cellSize,
+                              backgroundColor: colors[cell] || '#000',
+                              border: '0.5px solid rgba(255,255,255,0.05)'
+                            }}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              };
               
               return (
                 <div
@@ -307,17 +444,101 @@ export const ARCExperimentPythonPanel = () => {
                     borderRadius: '8px',
                     cursor: 'pointer',
                     border: puzzleActual?.id === puzzle.id ? '2px solid #2ECC40' : '2px solid transparent',
-                    transition: 'all 0.3s'
+                    transition: 'all 0.3s',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px'
                   }}
                   onClick={() => resolverPuzzle(puzzle)}
                 >
-                  <div style={{ fontSize: '24px', marginBottom: '5px' }}>{estado}</div>
-                  <div style={{ fontWeight: 'bold' }}>{puzzle.id}</div>
-                  <div style={{ fontSize: '14px', opacity: 0.8 }}>{puzzle.category}</div>
-                  <div style={{ fontSize: '12px', opacity: 0.6 }}>{puzzle.difficulty}</div>
+                  {/* Header con estado y ID */}
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    borderBottom: '1px solid #444',
+                    paddingBottom: '10px'
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: 'bold', fontSize: '14px' }}>{puzzle.id}</div>
+                      <div style={{ fontSize: '12px', opacity: 0.6, marginTop: '2px' }}>
+                        {puzzle.category} • {puzzle.difficulty}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '24px' }}>{estado}</div>
+                  </div>
                   
-                  {resultado && (
-                    <div style={{ marginTop: '10px' }}>
+                  {/* Vista previa del puzzle */}
+                  {puzzle.train && puzzle.train.length > 0 && (() => {
+                    console.log('Renderizando puzzle:', puzzle.id, 'Train:', puzzle.train[0]);
+                    return (
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '11px', color: '#888', marginBottom: '5px' }}>
+                          Ejemplo 1 de {puzzle.train.length}
+                        </div>
+                        <div style={{ 
+                          display: 'flex', 
+                          justifyContent: 'center', 
+                          alignItems: 'center',
+                          gap: '10px'
+                        }}>
+                          <div>
+                            <div style={{ fontSize: '10px', color: '#7FDBFF', marginBottom: '3px' }}>
+                              Input
+                            </div>
+                            {renderMiniGrid(puzzle.train[0].input)}
+                          </div>
+                        <div style={{ fontSize: '16px', color: '#666' }}>→</div>
+                        <div>
+                          <div style={{ fontSize: '10px', color: '#2ECC40', marginBottom: '3px' }}>
+                            Output
+                          </div>
+                          {renderMiniGrid(puzzle.train[0].output)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+                  
+                  {/* Test info */}
+                  {puzzle.test && puzzle.test.length > 0 && (
+                    <div style={{ 
+                      fontSize: '11px', 
+                      color: '#FF851B',
+                      textAlign: 'center',
+                      borderTop: '1px solid #444',
+                      paddingTop: '8px'
+                    }}>
+                      Test: {puzzle.test[0].input?.length}×{puzzle.test[0].input?.[0]?.length} grid
+                    </div>
+                  )}
+                  
+                  {/* Botones de acción */}
+                  <div style={{ 
+                    display: 'flex', 
+                    gap: '5px',
+                    marginTop: '5px'
+                  }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        resolverPuzzle(puzzle);
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '6px 10px',
+                        fontSize: '11px',
+                        backgroundColor: '#0074D9',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '3px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      🎯 Resolver
+                    </button>
+                    
+                    {resultado && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -325,8 +546,9 @@ export const ARCExperimentPythonPanel = () => {
                           setMostrarRazonamiento(true);
                         }}
                         style={{
-                          padding: '5px 10px',
-                          fontSize: '12px',
+                          flex: 1,
+                          padding: '6px 10px',
+                          fontSize: '11px',
                           backgroundColor: '#B10DC9',
                           color: 'white',
                           border: 'none',
@@ -334,10 +556,10 @@ export const ARCExperimentPythonPanel = () => {
                           cursor: 'pointer'
                         }}
                       >
-                        🧠 Ver Razonamiento
+                        🧠 Ver Detalles
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -345,7 +567,7 @@ export const ARCExperimentPythonPanel = () => {
         </div>
       )}
 
-      {/* Visualización de razonamiento */}
+      {/* Visualización mejorada de puzzle y razonamiento */}
       {mostrarRazonamiento && puzzleActual && resultados[puzzleActual.id] && (
         <div style={{
           position: 'fixed',
@@ -353,85 +575,165 @@ export const ARCExperimentPythonPanel = () => {
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.9)',
+          backgroundColor: 'rgba(0,0,0,0.95)',
           padding: '20px',
           overflow: 'auto',
           zIndex: 1000
         }}>
           <div style={{
-            maxWidth: '1200px',
-            margin: '0 auto',
-            backgroundColor: '#1a1a1a',
-            padding: '20px',
-            borderRadius: '8px'
+            maxWidth: '1400px',
+            margin: '0 auto'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <h2>Razonamiento para {puzzleActual.id}</h2>
-              <button
-                onClick={() => setMostrarRazonamiento(false)}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#FF4136',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '5px',
-                  cursor: 'pointer'
-                }}
-              >
-                ✕ Cerrar
-              </button>
+            {/* Header con controles */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '20px',
+              backgroundColor: '#1a1a1a',
+              padding: '15px',
+              borderRadius: '8px'
+            }}>
+              <h2 style={{ color: '#fff', margin: 0 }}>
+                🧩 Análisis Detallado: {puzzleActual.id}
+              </h2>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={() => exportarVisualizacion(puzzleActual.id, 'png')}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#F012BE',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '5px',
+                    cursor: 'pointer',
+                    fontSize: '14px'
+                  }}
+                >
+                  📸 Exportar PNG
+                </button>
+                <button
+                  onClick={() => setMostrarRazonamiento(false)}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#FF4136',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '5px',
+                    cursor: 'pointer',
+                    fontSize: '14px'
+                  }}
+                >
+                  ✕ Cerrar
+                </button>
+              </div>
             </div>
             
-            {/* Aquí iría la visualización detallada */}
-            <div style={{ marginBottom: '20px' }}>
-              <h3>Pasos de Razonamiento:</h3>
-              {resultados[puzzleActual.id].pasos.map((paso, idx) => (
-                <div key={idx} style={{
-                  backgroundColor: '#2a2a2a',
-                  padding: '15px',
-                  marginBottom: '10px',
-                  borderRadius: '5px'
-                }}>
-                  <div style={{ fontWeight: 'bold' }}>{paso.description}</div>
-                  {paso.details && <div style={{ fontSize: '14px', opacity: 0.8 }}>{paso.details}</div>}
-                </div>
-              ))}
-            </div>
-            
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                onClick={() => exportarVisualizacion(puzzleActual.id, 'png')}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#F012BE',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '5px',
-                  cursor: 'pointer'
-                }}
-              >
-                📸 Exportar PNG
-              </button>
+            {/* Layout de dos columnas */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '20px',
+              '@media (max-width: 1200px)': {
+                gridTemplateColumns: '1fr'
+              }
+            }}>
+              {/* Columna izquierda: Visualización del puzzle */}
+              <div>
+                <ARCPuzzleVisualization
+                  puzzle={puzzleActual}
+                  solution={resultados[puzzleActual.id].solucion}
+                  expected={resultados[puzzleActual.id].esperado}
+                  showComparison={true}
+                  cellSize={25}
+                />
+              </div>
               
-              <button
-                onClick={() => exportarVisualizacion(puzzleActual.id, 'gif')}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#7FDBFF',
-                  color: 'black',
-                  border: 'none',
-                  borderRadius: '5px',
-                  cursor: 'pointer'
-                }}
-              >
-                🎬 Exportar GIF
-              </button>
+              {/* Columna derecha: Razonamiento */}
+              <div>
+                <ARCReasoningDisplay
+                  reasoning={resultados[puzzleActual.id].pasos || []}
+                  confidence={resultados[puzzleActual.id].confianza || 0}
+                  isCorrect={resultados[puzzleActual.id].correcto}
+                />
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Estado de carga */}
+      {/* Loader para carga de puzzles */}
+      {cargandoPuzzles && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1001
+        }}>
+          <div style={{
+            backgroundColor: '#2a2a2a',
+            padding: '40px',
+            borderRadius: '12px',
+            textAlign: 'center',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+          }}>
+            <div style={{
+              fontSize: '48px',
+              marginBottom: '20px',
+              animation: 'spin 2s linear infinite',
+              display: 'inline-block'
+            }}>
+              🧩
+            </div>
+            <style>
+              {`
+                @keyframes spin {
+                  from { transform: rotate(0deg); }
+                  to { transform: rotate(360deg); }
+                }
+                @keyframes pulse {
+                  0% { opacity: 0.4; }
+                  50% { opacity: 1; }
+                  100% { opacity: 0.4; }
+                }
+              `}
+            </style>
+            <h3 style={{ color: '#7FDBFF', marginBottom: '10px' }}>
+              {useOfficial ? 'Cargando Puzzles Oficiales de ARC' : 'Cargando Puzzles de Ejemplo'}
+            </h3>
+            <div style={{ fontSize: '14px', color: '#888', marginBottom: '20px' }}>
+              {useOfficial && 'Descargando desde GitHub oficial...'}
+              {!useOfficial && 'Preparando puzzles de demostración...'}
+            </div>
+            <div style={{
+              display: 'flex',
+              gap: '5px',
+              justifyContent: 'center'
+            }}>
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  style={{
+                    width: '10px',
+                    height: '10px',
+                    backgroundColor: '#7FDBFF',
+                    borderRadius: '50%',
+                    animation: `pulse 1.5s ease-in-out ${i * 0.2}s infinite`
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Estado de carga de resolución */}
       {cargando && (
         <div style={{
           position: 'fixed',

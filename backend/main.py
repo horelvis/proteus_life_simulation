@@ -18,6 +18,7 @@ from app.models import (
     OrganismData,
     WorldUpdate
 )
+from typing import Any
 
 
 # Gestión de simulaciones activas
@@ -63,6 +64,171 @@ async def root():
         "status": "running",
         "active_simulations": len(active_simulations)
     }
+
+
+@app.get("/api/arc/puzzles")
+async def get_arc_puzzles() -> Dict[str, Any]:
+    """Obtiene la lista de puzzles ARC disponibles"""
+    # Puzzles estilo ARC real
+    puzzles = [
+        {"id": "demo_1", "name": "Reflexión Vertical", "difficulty": "easy", "category": "symmetry"},
+        {"id": "demo_2", "name": "Contar Objetos", "difficulty": "easy", "category": "counting"},
+        {"id": "demo_3", "name": "Encontrar Patrón", "difficulty": "medium", "category": "pattern"},
+        {"id": "demo_4", "name": "Gravedad", "difficulty": "medium", "category": "physics"},
+        {"id": "arc_001", "name": "Rotación 90°", "difficulty": "medium", "category": "rotation"},
+        {"id": "arc_002", "name": "Completar Secuencia", "difficulty": "hard", "category": "sequence"}
+    ]
+    
+    return {"puzzles": puzzles}
+
+
+@app.get("/api/arc/puzzle/{puzzle_id}")
+async def get_arc_puzzle(puzzle_id: str) -> Dict[str, Any]:
+    """Obtiene un puzzle ARC específico"""
+    
+    # Puzzles demo hardcodeados - Estilo ARC real
+    demo_puzzles = {
+        "demo_1": {
+            "id": "demo_1",
+            "name": "Reflexión Vertical",
+            "category": "symmetry",
+            "difficulty": "easy",
+            "train": [
+                {
+                    "input": [[1, 0, 0], [2, 0, 0], [3, 0, 0]],
+                    "output": [[1, 0, 1], [2, 0, 2], [3, 0, 3]]
+                },
+                {
+                    "input": [[0, 0, 4], [0, 0, 5], [0, 0, 6]],
+                    "output": [[4, 0, 4], [5, 0, 5], [6, 0, 6]]
+                },
+                {
+                    "input": [[7, 8, 0], [0, 0, 0], [0, 0, 0]],
+                    "output": [[7, 8, 0], [0, 0, 0], [7, 8, 0]]
+                }
+            ],
+            "test": [
+                {"input": [[0, 2, 0], [0, 3, 0], [0, 0, 0]]}
+            ]
+        },
+        "demo_2": {
+            "id": "demo_2",
+            "name": "Contar Objetos",
+            "category": "counting",
+            "difficulty": "easy",
+            "train": [
+                {
+                    "input": [[1, 0, 1], [0, 0, 0], [1, 0, 0]],
+                    "output": [[3]]
+                },
+                {
+                    "input": [[2, 2, 0], [0, 2, 0], [2, 2, 0]],
+                    "output": [[5]]
+                },
+                {
+                    "input": [[0, 3, 3], [0, 0, 0], [0, 0, 0]],
+                    "output": [[2]]
+                }
+            ],
+            "test": [
+                {"input": [[4, 0, 4], [4, 0, 0], [0, 0, 4]]}
+            ]
+        },
+        "demo_3": {
+            "id": "demo_3",
+            "name": "Encontrar Patrón",
+            "category": "pattern",
+            "difficulty": "medium",
+            "train": [
+                {
+                    "input": [[0, 0, 0, 0, 0], [0, 1, 2, 1, 0], [0, 2, 1, 2, 0], [0, 1, 2, 1, 0], [0, 0, 0, 0, 0]],
+                    "output": [[1, 2, 1], [2, 1, 2], [1, 2, 1]]
+                },
+                {
+                    "input": [[0, 0, 0, 0, 0, 0], [0, 3, 4, 0, 0, 0], [0, 4, 3, 0, 0, 0], [0, 0, 0, 0, 0, 0]],
+                    "output": [[3, 4], [4, 3]]
+                }
+            ],
+            "test": [
+                {"input": [[0, 0, 0, 0, 0, 0, 0], [0, 0, 5, 6, 5, 0, 0], [0, 0, 6, 5, 6, 0, 0], [0, 0, 5, 6, 5, 0, 0], [0, 0, 0, 0, 0, 0, 0]]}
+            ]
+        },
+        "demo_4": {
+            "id": "demo_4",
+            "name": "Gravedad",
+            "category": "physics",
+            "difficulty": "medium",
+            "train": [
+                {
+                    "input": [[0, 1, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
+                    "output": [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 1, 0]]
+                },
+                {
+                    "input": [[2, 0, 3], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
+                    "output": [[0, 0, 0], [0, 0, 0], [0, 0, 0], [2, 0, 3]]
+                },
+                {
+                    "input": [[0, 0, 0], [4, 0, 5], [0, 0, 0], [0, 0, 0]],
+                    "output": [[0, 0, 0], [0, 0, 0], [0, 0, 0], [4, 0, 5]]
+                }
+            ],
+            "test": [
+                {"input": [[6, 0, 0], [0, 7, 0], [0, 0, 0], [0, 0, 0]]}
+            ]
+        },
+        "arc_001": {
+            "id": "arc_001",
+            "name": "Rotación 90°",
+            "category": "rotation",
+            "difficulty": "medium",
+            "train": [
+                {
+                    "input": [[1, 2, 0], [0, 0, 0], [0, 0, 0]],
+                    "output": [[0, 0, 1], [0, 0, 2], [0, 0, 0]]
+                },
+                {
+                    "input": [[3, 0, 0], [4, 0, 0], [5, 0, 0]],
+                    "output": [[5, 4, 3], [0, 0, 0], [0, 0, 0]]
+                },
+                {
+                    "input": [[0, 0, 6], [0, 0, 7], [0, 0, 0]],
+                    "output": [[0, 0, 0], [7, 0, 0], [6, 0, 0]]
+                }
+            ],
+            "test": [
+                {"input": [[8, 9, 0], [0, 0, 0], [0, 0, 0]]}
+            ]
+        },
+        "arc_002": {
+            "id": "arc_002",
+            "name": "Completar Secuencia",
+            "category": "sequence",
+            "difficulty": "hard",
+            "train": [
+                {
+                    "input": [[1, 0, 3], [0, 0, 0], [0, 0, 0]],
+                    "output": [[1, 2, 3], [0, 0, 0], [0, 0, 0]]
+                },
+                {
+                    "input": [[0, 0, 0], [4, 0, 6], [0, 0, 0]],
+                    "output": [[0, 0, 0], [4, 5, 6], [0, 0, 0]]
+                },
+                {
+                    "input": [[0, 0, 0], [0, 0, 0], [7, 0, 9]],
+                    "output": [[0, 0, 0], [0, 0, 0], [7, 8, 9]]
+                }
+            ],
+            "test": [
+                {"input": [[2, 0, 0, 5], [0, 0, 0, 0], [0, 0, 0, 0]]}
+            ]
+        }
+    }
+    
+    if puzzle_id in demo_puzzles:
+        return demo_puzzles[puzzle_id]
+    
+    # Para otros puzzles, devolver un error o cargar de archivo
+    return {"error": "Puzzle not found", "id": puzzle_id}
 
 
 @app.post("/api/simulations/create")

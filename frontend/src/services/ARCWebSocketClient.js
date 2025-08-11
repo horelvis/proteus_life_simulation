@@ -3,8 +3,9 @@
  */
 
 export class ARCWebSocketClient {
-  constructor(url = 'ws://localhost:8765') {
-    this.url = url;
+  constructor(url = null) {
+    // Usar URL relativa para que pase por el proxy de nginx
+    this.url = url || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/arc-ws`;
     this.ws = null;
     this.connected = false;
     this.reconnectAttempts = 0;
@@ -176,6 +177,43 @@ export class ARCWebSocketClient {
    */
   loadPuzzles(puzzleSet = 'training', count = 10) {
     this.send('load_puzzles', { puzzle_set: puzzleSet, count });
+  }
+  
+  /**
+   * Envía un mensaje y espera una respuesta
+   */
+  sendMessage(message) {
+    return new Promise((resolve, reject) => {
+      // Generar ID único para el mensaje
+      const messageId = `msg_${Date.now()}_${Math.random()}`;
+      const messageWithId = { ...message, messageId };
+      
+      // Timeout para la respuesta
+      const timeout = setTimeout(() => {
+        this.off('validation_result', responseHandler);
+        reject(new Error('Timeout esperando respuesta del servidor'));
+      }, 10000);
+      
+      // Handler para la respuesta
+      const responseHandler = (response) => {
+        if (response.type === 'validation_result') {
+          clearTimeout(timeout);
+          this.off('validation_result', responseHandler);
+          resolve(response);
+        }
+      };
+      
+      // Registrar el handler
+      this.on('validation_result', responseHandler);
+      
+      // Enviar el mensaje
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify(messageWithId));
+      } else {
+        clearTimeout(timeout);
+        reject(new Error('WebSocket no está conectado'));
+      }
+    });
   }
 
   /**

@@ -8,14 +8,35 @@ import asyncio
 import websockets
 import json
 import logging
+import os
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 import numpy as np
+from dotenv import load_dotenv
+
+# Cargar variables de entorno
+load_dotenv()
+
+class NumpyEncoder(json.JSONEncoder):
+    """Encoder personalizado para manejar tipos numpy"""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        return super(NumpyEncoder, self).default(obj)
 
 from .arc_solver_python import ARCSolverPython
 from .arc_visualizer import ARCVisualizer
 from .arc_dataset_loader import ARCDatasetLoader
 from .arc_swarm_solver import ARCSwarmSolver
+from .arc_official_loader import ARCOfficialLoader
+from .arc_image_processor import ARCImageProcessor
+from .arc_api_client import ARCApiClient
 
 # Configurar logging
 logging.basicConfig(
@@ -25,14 +46,30 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class ARCWebSocketServer:
-    def __init__(self, host='localhost', port=8765):
+    def __init__(self, host='0.0.0.0', port=8765):
         self.host = host
         self.port = port
         self.clients = set()
         self.solver = ARCSolverPython()
         self.visualizer = ARCVisualizer()
         self.dataset_loader = ARCDatasetLoader()
+        self.official_loader = ARCOfficialLoader()
+        self.image_processor = ARCImageProcessor()
+        self.arc_api_client = ARCApiClient()  # Cliente para API oficial
         self.active_sessions = {}
+        self.puzzles = []  # Almacenar puzzles cargados
+        self.api_puzzles_cache = {}  # Cache de puzzles de la API
+        
+        # Benchmarks de LLMs en ARC (según docs.arcprize.org)
+        self.llm_benchmarks = {
+            'gpt-4o': {'accuracy': 0.21, 'model': 'GPT-4 Optimized', 'date': '2024'},
+            'claude-3-opus': {'accuracy': 0.18, 'model': 'Claude 3 Opus', 'date': '2024'},
+            'gemini-1.5-pro': {'accuracy': 0.16, 'model': 'Gemini 1.5 Pro', 'date': '2024'},
+            'gpt-4': {'accuracy': 0.13, 'model': 'GPT-4', 'date': '2023'},
+            'claude-2': {'accuracy': 0.10, 'model': 'Claude 2', 'date': '2023'},
+            'human_baseline': {'accuracy': 0.85, 'model': 'Human Average', 'date': '2019'},
+            'proteus': {'accuracy': 0.0, 'model': 'PROTEUS (This)', 'date': '2025'}
+        }
         
     async def register(self, websocket):
         """Registra un nuevo cliente"""
@@ -63,7 +100,7 @@ class ARCWebSocketServer:
     async def send_message(self, websocket, data: Dict[str, Any]):
         """Envía un mensaje al cliente"""
         try:
-            await websocket.send(json.dumps(data))
+            await websocket.send(json.dumps(data, cls=NumpyEncoder))
         except Exception as e:
             logger.error(f"Error enviando mensaje: {e}")
             
@@ -94,6 +131,14 @@ class ARCWebSocketServer:
                 await self.handle_verify_integrity(websocket, data)
             elif msg_type == 'export_visualization':
                 await self.handle_export_visualization(websocket, data)
+            elif msg_type == 'process_image':
+                await self.handle_process_image(websocket, data)
+            elif msg_type == 'load_image_puzzle':
+                await self.handle_load_image_puzzle(websocket, data)
+            elif msg_type == 'validate_solution':
+                await self.handle_validate_solution(websocket, data)
+            elif msg_type == 'load_api_puzzles':
+                await self.handle_load_api_puzzles(websocket, data)
             else:
                 await self.send_message(websocket, {
                     'type': 'error',
@@ -116,18 +161,51 @@ class ARCWebSocketServer:
         """Carga puzzles ARC"""
         puzzle_set = data.get('puzzle_set', 'training')
         count = data.get('count', 10)
+        use_official = data.get('use_official', True)  # Por defecto usar oficiales
         
         await self.send_message(websocket, {
             'type': 'loading',
-            'message': 'Cargando puzzles ARC...'
+            'message': f'Cargando {count} puzzles {"oficiales de ARC" if use_official else "de ejemplo"}...'
         })
         
-        puzzles = self.dataset_loader.load_puzzles(puzzle_set, count)
+        if use_official:
+            # Cargar puzzles oficiales desde GitHub
+            try:
+                puzzles = self.official_loader.load_from_github(
+                    dataset=puzzle_set,
+                    version='arc_agi_1',
+                    limit=count
+                )
+                # Convertir al formato esperado
+                formatted_puzzles = []
+                for p in puzzles:
+                    formatted = {
+                        'id': p['id'],
+                        'train': p['trainExamples'],
+                        'test': [p['testExample']] if p['testExample'] else [],
+                        'category': 'official',
+                        'difficulty': 'unknown',
+                        'source': 'arc_official'
+                    }
+                    formatted_puzzles.append(formatted)
+                puzzles = formatted_puzzles
+            except Exception as e:
+                logger.error(f"Error cargando puzzles oficiales: {e}")
+                # Fallback a puzzles de ejemplo
+                puzzles = self.dataset_loader.load_puzzles(puzzle_set, count)
+        else:
+            puzzles = self.dataset_loader.load_puzzles(puzzle_set, count)
         
+        # Guardar puzzles en memoria
+        self.puzzles = puzzles
+        
+        # Agregar info de benchmarks
         await self.send_message(websocket, {
             'type': 'puzzles_loaded',
             'puzzles': [self._serialize_puzzle(p) for p in puzzles],
-            'count': len(puzzles)
+            'count': len(puzzles),
+            'benchmarks': self.llm_benchmarks,
+            'official': use_official
         })
         
     async def handle_solve_puzzle(self, websocket, data: Dict[str, Any]):
@@ -281,6 +359,226 @@ class ARCWebSocketServer:
             'passed': all(t['passed'] for t in test_results)
         })
         
+    async def handle_validate_solution(self, websocket, data: Dict[str, Any]):
+        """Valida la solución del usuario en el modo juego"""
+        puzzle_id = data.get('puzzleId')
+        user_solution = data.get('solution')
+        
+        try:
+            # Buscar el puzzle en los puzzles cargados
+            puzzle = None
+            if self.puzzles:
+                for p in self.puzzles:
+                    if p.get('id') == puzzle_id:
+                        puzzle = p
+                        break
+            
+            # Si no hay puzzles cargados, buscar en los demo
+            if not puzzle and puzzle_id.startswith('demo_'):
+                demo_puzzles = self._get_demo_puzzles()
+                puzzle = demo_puzzles.get(puzzle_id)
+            
+            if not puzzle:
+                # Si no está en memoria ni en demos
+                if puzzle_id.startswith('demo_'):
+                    # Es un puzzle demo, usar solución hardcodeada
+                    expected = self._get_demo_solution(puzzle_id)
+                    is_correct = self._compare_grids(user_solution, expected)
+                else:
+                    # No encontrado
+                    expected = None
+                    is_correct = False
+            else:
+                # Obtener la solución esperada
+                if puzzle.get('test') and len(puzzle['test']) > 0:
+                    if 'output' in puzzle['test'][0]:
+                        expected = puzzle['test'][0]['output']
+                        is_correct = self._compare_grids(user_solution, expected)
+                    else:
+                        # No hay solución disponible, usar el solver
+                        test_input = np.array(puzzle['test'][0]['input'])
+                        solution = self.solver.solve(puzzle['train'], test_input)
+                        expected = solution.tolist() if solution is not None else None
+                        is_correct = self._compare_grids(user_solution, expected)
+                else:
+                    expected = None
+                    is_correct = False
+            
+            # Calcular diferencias
+            differences = []
+            if expected:
+                for i in range(min(len(user_solution), len(expected))):
+                    for j in range(min(len(user_solution[i]), len(expected[i]))):
+                        if user_solution[i][j] != expected[i][j]:
+                            differences.append({
+                                'row': i,
+                                'col': j,
+                                'got': user_solution[i][j],
+                                'expected': expected[i][j]
+                            })
+            
+            await self.send_message(websocket, {
+                'type': 'validation_result',
+                'puzzleId': puzzle_id,
+                'isCorrect': is_correct,
+                'expected': expected,
+                'differences': differences,
+                'message': '¡Correcto!' if is_correct else f'Incorrecto: {len(differences)} diferencias'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error validando solución: {e}")
+            await self.send_message(websocket, {
+                'type': 'error',
+                'message': f'Error al validar solución: {str(e)}'
+            })
+    
+    def _compare_grids(self, grid1, grid2):
+        """Compara dos grids para ver si son iguales"""
+        if not grid1 or not grid2:
+            return False
+        if len(grid1) != len(grid2):
+            return False
+        for i in range(len(grid1)):
+            if len(grid1[i]) != len(grid2[i]):
+                return False
+            for j in range(len(grid1[i])):
+                if grid1[i][j] != grid2[i][j]:
+                    return False
+        return True
+    
+    def _get_demo_solution(self, puzzle_id):
+        """Obtiene la solución para puzzles demo - Estilo ARC real"""
+        solutions = {
+            'demo_1': [[0, 2, 0], [0, 3, 0], [0, 2, 0]],  # Reflexión vertical
+            'demo_2': [[4]],  # Contar objetos (4 elementos)
+            'demo_3': [[5, 6, 5], [6, 5, 6], [5, 6, 5]],  # Extraer patrón
+            'demo_4': [[0, 0, 0], [0, 0, 0], [0, 0, 0], [6, 7, 0]],  # Gravedad
+            'arc_001': [[0, 0, 8], [0, 0, 9], [0, 0, 0]],  # Rotación 90°
+            'arc_002': [[2, 3, 4, 5], [0, 0, 0, 0], [0, 0, 0, 0]]  # Completar secuencia
+        }
+        return solutions.get(puzzle_id, None)
+    
+    def _get_demo_puzzles(self):
+        """Devuelve puzzles demo predefinidos"""
+        return {
+            'demo_1': {
+                'id': 'demo_1',
+                'train': [
+                    {'input': [[0, 0, 0], [0, 1, 0], [0, 0, 0]], 
+                     'output': [[1, 1, 1], [1, 1, 1], [1, 1, 1]]},
+                    {'input': [[0, 2, 0], [0, 0, 0], [0, 0, 0]], 
+                     'output': [[2, 2, 2], [2, 2, 2], [2, 2, 2]]}
+                ],
+                'test': [{'input': [[0, 0, 0], [0, 0, 3], [0, 0, 0]]}]
+            },
+            'demo_2': {
+                'id': 'demo_2',
+                'train': [
+                    {'input': [[1, 0, 0, 0], [0, 2, 0, 0], [0, 0, 3, 0], [0, 0, 0, 4]],
+                     'output': [[1, 1, 1, 1], [2, 2, 2, 2], [3, 3, 3, 3], [4, 4, 4, 4]]}
+                ],
+                'test': [{'input': [[5, 0, 0, 0], [0, 6, 0, 0], [0, 0, 7, 0], [0, 0, 0, 8]]}]
+            },
+            'demo_3': {
+                'id': 'demo_3',
+                'train': [
+                    {'input': [[0, 1, 0], [1, 1, 1], [0, 1, 0]],
+                     'output': [[0, 2, 0], [2, 2, 2], [0, 2, 0]]},
+                    {'input': [[3, 3, 3], [3, 0, 3], [3, 3, 3]],
+                     'output': [[4, 4, 4], [4, 0, 4], [4, 4, 4]]}
+                ],
+                'test': [{'input': [[5, 5, 0], [5, 0, 0], [0, 0, 0]]}]
+            },
+            'demo_4': {
+                'id': 'demo_4',
+                'train': [
+                    {'input': [[1, 0, 1], [0, 0, 0], [1, 0, 1]],
+                     'output': [[1, 1, 1], [1, 0, 1], [1, 1, 1]]},
+                    {'input': [[2, 0, 0], [0, 0, 0], [0, 0, 2]],
+                     'output': [[2, 0, 2], [0, 0, 0], [2, 0, 2]]}
+                ],
+                'test': [{'input': [[3, 0, 0], [0, 0, 0], [0, 0, 3]]}]
+            },
+            'arc_001': {
+                'id': 'arc_001',
+                'train': [
+                    {'input': [[0, 0, 0, 0], [0, 1, 1, 0], [0, 1, 1, 0], [0, 0, 0, 0]],
+                     'output': [[1, 1], [1, 1]]},
+                    {'input': [[0, 0, 0, 0, 0], [0, 2, 2, 2, 0], [0, 2, 2, 2, 0], [0, 2, 2, 2, 0], [0, 0, 0, 0, 0]],
+                     'output': [[2, 2, 2], [2, 2, 2], [2, 2, 2]]}
+                ],
+                'test': [{'input': [[0, 0, 0, 0, 0, 0], [0, 3, 3, 3, 3, 0], [0, 3, 3, 3, 3, 0], [0, 3, 3, 3, 3, 0], [0, 3, 3, 3, 3, 0], [0, 0, 0, 0, 0, 0]]}]
+            },
+            'arc_002': {
+                'id': 'arc_002',
+                'train': [
+                    {'input': [[1, 0, 0], [0, 2, 0], [0, 0, 3]],
+                     'output': [[1, 1, 1], [2, 2, 2], [3, 3, 3]]},
+                    {'input': [[4, 0, 0, 0], [0, 5, 0, 0], [0, 0, 6, 0], [0, 0, 0, 7]],
+                     'output': [[4, 4, 4, 4], [5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7]]}
+                ],
+                'test': [{'input': [[8, 0, 0, 0, 0], [0, 9, 0, 0, 0], [0, 0, 1, 0, 0], [0, 0, 0, 2, 0], [0, 0, 0, 0, 3]]}]
+            }
+        }
+
+    async def handle_load_api_puzzles(self, websocket, data: Dict[str, Any]):
+        """Carga puzzles desde la API oficial de ARC Prize"""
+        game_id = data.get('game_id', 'ls20')
+        count = data.get('count', 10)
+        
+        try:
+            # Notificar inicio de carga
+            await self.send_message(websocket, {
+                'type': 'loading',
+                'message': f'Cargando puzzles oficiales del juego {game_id}...'
+            })
+            
+            # Verificar si hay API key
+            if not self.arc_api_client.api_key:
+                logger.warning("No hay ARC_API_KEY configurada, usando puzzles demo")
+                # Usar puzzles demo si no hay API key
+                demo_puzzles = self._get_demo_puzzles()
+                self.api_puzzles_cache = demo_puzzles
+                
+                puzzles_list = []
+                for puzzle_id, puzzle in demo_puzzles.items():
+                    puzzle['id'] = puzzle_id
+                    puzzles_list.append(puzzle)
+                
+                await self.send_message(websocket, {
+                    'type': 'api_puzzles_loaded',
+                    'puzzles': puzzles_list[:count],
+                    'count': len(puzzles_list[:count]),
+                    'game_id': 'demo',
+                    'message': 'Usando puzzles demo (no hay API key)'
+                })
+                return
+            
+            # Cargar puzzles de la API
+            async with self.arc_api_client:
+                puzzles = await self.arc_api_client.load_game_puzzles(game_id, count)
+                
+                # Guardar en cache
+                for puzzle in puzzles:
+                    self.api_puzzles_cache[puzzle['id']] = puzzle
+                
+                # Enviar puzzles cargados
+                await self.send_message(websocket, {
+                    'type': 'api_puzzles_loaded',
+                    'puzzles': puzzles,
+                    'count': len(puzzles),
+                    'game_id': game_id,
+                    'message': f'Cargados {len(puzzles)} puzzles oficiales de {game_id}'
+                })
+                
+        except Exception as e:
+            logger.error(f"Error cargando puzzles de API: {e}")
+            await self.send_message(websocket, {
+                'type': 'error',
+                'message': f'Error cargando puzzles: {str(e)}'
+            })
+    
     async def handle_export_visualization(self, websocket, data: Dict[str, Any]):
         """Exporta visualización como imagen o GIF"""
         puzzle_id = data.get('puzzle_id')
@@ -430,6 +728,64 @@ class ARCWebSocketServer:
         finally:
             await self.unregister(websocket)
             
+    async def handle_process_image(self, websocket, data: Dict[str, Any]):
+        """Procesa una imagen para convertirla en grid ARC"""
+        image_data = data.get('image_data')
+        cell_size = data.get('cell_size', 30)
+        
+        if not image_data:
+            await self.send_message(websocket, {
+                'type': 'error',
+                'message': 'No se proporcionó imagen'
+            })
+            return
+        
+        # Procesar imagen
+        result = self.image_processor.image_to_grid(image_data, cell_size)
+        
+        if result['success']:
+            await self.send_message(websocket, {
+                'type': 'image_processed',
+                'grid': result['grid'],
+                'dimensions': result['dimensions'],
+                'original_size': result['original_size']
+            })
+        else:
+            await self.send_message(websocket, {
+                'type': 'error',
+                'message': f"Error procesando imagen: {result.get('error')}"
+            })
+    
+    async def handle_load_image_puzzle(self, websocket, data: Dict[str, Any]):
+        """Carga un puzzle completo desde una imagen"""
+        image_data = data.get('image_data')
+        
+        if not image_data:
+            await self.send_message(websocket, {
+                'type': 'error',
+                'message': 'No se proporcionó imagen'
+            })
+            return
+        
+        # Analizar imagen como puzzle
+        result = self.image_processor.analyze_image_puzzle(image_data)
+        
+        if result['success']:
+            puzzle = result['puzzle']
+            
+            # Agregar a la lista de puzzles disponibles
+            await self.send_message(websocket, {
+                'type': 'image_puzzle_loaded',
+                'puzzle': self._serialize_puzzle(puzzle),
+                'analysis': result.get('analysis', {}),
+                'grids_detected': result.get('grids_detected', 0)
+            })
+        else:
+            await self.send_message(websocket, {
+                'type': 'error',
+                'message': f"Error analizando imagen: {result.get('error')}"
+            })
+    
     async def start(self):
         """Inicia el servidor WebSocket"""
         logger.info(f"Iniciando servidor ARC en ws://{self.host}:{self.port}")
