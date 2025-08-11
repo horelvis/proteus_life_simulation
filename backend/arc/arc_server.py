@@ -33,7 +33,7 @@ class NumpyEncoder(json.JSONEncoder):
 from .arc_solver_python import ARCSolverPython
 from .arc_visualizer import ARCVisualizer
 from .arc_dataset_loader import ARCDatasetLoader
-from .arc_swarm_solver import ARCSwarmSolver
+# from .arc_swarm_solver import ARCSwarmSolver  # Comentado: módulo no existe
 from .arc_official_loader import ARCOfficialLoader
 from .arc_image_processor import ARCImageProcessor
 from .arc_api_client import ARCApiClient
