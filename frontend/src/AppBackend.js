@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { API_BASE_URL, WS_URL } from './config';
 import styled from 'styled-components';
 import SimulationCanvas from './components/SimulationCanvas';
 import ControlPanel from './components/ControlPanel';
@@ -90,12 +91,8 @@ function AppBackend() {
   const worldSize = { width: 1600, height: 1200 };
 
   useEffect(() => {
-    const apiBase = (typeof process !== 'undefined' && process.env.REACT_APP_BACKEND_URL && process.env.REACT_APP_BACKEND_URL.trim())
-      ? process.env.REACT_APP_BACKEND_URL.trim().replace(/\/$/, '')
-      : (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://localhost:8000');
-    const wsBase = (typeof process !== 'undefined' && process.env.REACT_APP_WS_URL && process.env.REACT_APP_WS_URL.trim())
-      ? process.env.REACT_APP_WS_URL.trim().replace(/\/$/, '')
-      : (typeof window !== 'undefined' ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws` : 'ws://localhost:8000/ws');
+    const apiBase = API_BASE_URL.replace(/\/api$/, '');
+    const wsBase = WS_URL;
     // Connect to WebSocket
     const connectWebSocket = () => {
       const clientId = `web-${Date.now()}`;

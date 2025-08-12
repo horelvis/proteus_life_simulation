@@ -2,13 +2,12 @@
  * Cliente WebSocket para comunicación con el backend Python de ARC
  */
 
+import { ARC_WS_URL } from '../config';
+
 export class ARCWebSocketClient {
   constructor(url = null) {
-    // Permitir override por env en dev: REACT_APP_ARC_WS_URL
-    // Fallback seguro: ruta relativa vía Nginx: /arc-ws
-    const envUrl = typeof process !== 'undefined' ? process.env.REACT_APP_ARC_WS_URL : undefined;
-    const defaultRelative = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/arc-ws`;
-    this.url = url || (envUrl && envUrl.trim() ? envUrl.trim() : defaultRelative);
+    // Centralizado: usar config con override por env y fallback vía Nginx
+    this.url = url || ARC_WS_URL;
     this.ws = null;
     this.connected = false;
     this.reconnectAttempts = 0;
