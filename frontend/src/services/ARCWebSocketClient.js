@@ -6,8 +6,11 @@ import { ARC_WS_URL } from '../config';
 
 export class ARCWebSocketClient {
   constructor(url = null) {
-    // Centralizado: usar config con override por env y fallback vía Nginx
-    this.url = url || ARC_WS_URL;
+    // Prioridad: parámetro -> localStorage override -> config
+    const lsUrl = (() => {
+      try { return localStorage.getItem('arc_ws_url'); } catch (_) { return null; }
+    })();
+    this.url = (url && url.trim()) || (lsUrl && lsUrl.trim()) || ARC_WS_URL;
     this.ws = null;
     this.connected = false;
     this.reconnectAttempts = 0;
@@ -26,11 +29,24 @@ export class ARCWebSocketClient {
       try {
         console.log(`🔌 Conectando a ${this.url}...`);
         this.ws = new WebSocket(this.url);
+        let opened = false;
+        const timeoutMs = 8000;
+        const timeoutId = setTimeout(() => {
+          if (!opened) {
+            const err = new Error(`Timeout conectando WebSocket en ${this.url}`);
+            console.error('⏱️  Timeout WebSocket:', err);
+            try { this.ws && this.ws.close(); } catch (_) {}
+            this.connected = false;
+            reject(err);
+          }
+        }, timeoutMs);
 
         this.ws.onopen = () => {
           console.log('✅ Conectado al servidor ARC');
           this.connected = true;
           this.reconnectAttempts = 0;
+          opened = true;
+          clearTimeout(timeoutId);
           
           // Procesar mensajes en cola
           this.processMessageQueue();
@@ -42,13 +58,15 @@ export class ARCWebSocketClient {
           this.handleMessage(event.data);
         };
 
-        this.ws.onerror = (error) => {
-          console.error('❌ Error WebSocket:', error);
-          reject(error);
+        this.ws.onerror = (event) => {
+          // Los eventos de error de WebSocket no exponen detalles
+          const err = new Error(`Error conectando WebSocket en ${this.url}`);
+          console.error('❌ Error WebSocket:', err, event);
+          reject(err);
         };
 
-        this.ws.onclose = () => {
-          console.log('🔌 Conexión cerrada');
+        this.ws.onclose = (ev) => {
+          console.log('🔌 Conexión cerrada', ev?.code, ev?.reason || '');
           this.connected = false;
           this.handleDisconnect();
         };
