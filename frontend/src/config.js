@@ -35,6 +35,16 @@ export const WS_URL = (() => {
 export const ARC_WS_URL = (() => {
   const env = typeof process !== 'undefined' ? process.env.REACT_APP_ARC_WS_URL : undefined;
   if (env && env.trim()) return trimSlash(env.trim());
+  // Derivar desde BACKEND_BASE_URL si está disponible (mismo host, puerto 8765)
+  const backend = typeof process !== 'undefined' ? process.env.REACT_APP_BACKEND_URL : undefined;
+  if (backend && backend.trim()) {
+    try {
+      const u = new URL(backend.trim());
+      const proto = u.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${proto}//${u.hostname}:8765`;
+    } catch (_) {}
+  }
+  // Fallback relativo (requiere proxy de nginx o setupProxy en dev)
   if (typeof window !== 'undefined') {
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${proto}//${window.location.host}/arc-ws`;
@@ -48,4 +58,3 @@ export default {
   WS_URL,
   ARC_WS_URL,
 };
-
