@@ -35,7 +35,8 @@ export const WS_URL = (() => {
   }
   if (typeof window !== 'undefined') {
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${proto}//${window.location.host}/ws`;
+    // Opción B (directo): derivar a backend:8000 cuando no hay env
+    return `${proto}//${window.location.hostname}:8000/ws`;
   }
   return 'ws://localhost:8000/ws';
 })();
@@ -53,10 +54,10 @@ export const ARC_WS_URL = (() => {
       return `${proto}//${u.hostname}:8765`;
     } catch (_) {}
   }
-  // Fallback relativo (requiere proxy de nginx o setupProxy en dev)
+  // Opción B (directo): derivar a backend:8765 cuando no hay env
   if (typeof window !== 'undefined') {
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${proto}//${window.location.host}/arc-ws`;
+    return `${proto}//${window.location.hostname}:8765`;
   }
   return 'ws://localhost:8765';
 })();
