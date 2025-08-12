@@ -21,10 +21,8 @@ if [ -z "$DEV_IP" ]; then
   DEV_IP=localhost
 fi
 
-# Configurar variables de entorno
+# Configurar variables de entorno (una sola es suficiente)
 export REACT_APP_BACKEND_URL=${REACT_APP_BACKEND_URL:-http://$DEV_IP:8000}
-export REACT_APP_WS_URL=${REACT_APP_WS_URL:-ws://$DEV_IP:8000}
-export REACT_APP_ARC_WS_URL=${REACT_APP_ARC_WS_URL:-ws://$DEV_IP:8765}
 export PORT=${PORT:-3001}
 # Servir CRA en 0.0.0.0 para acceso LAN
 export HOST=0.0.0.0
@@ -43,5 +41,4 @@ fi
 # Iniciar en modo desarrollo
 echo "🔧 Iniciando servidor de desarrollo..."
 echo "   REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL"
-echo "   REACT_APP_ARC_WS_URL=$REACT_APP_ARC_WS_URL"
 npm start

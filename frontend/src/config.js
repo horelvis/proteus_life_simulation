@@ -24,6 +24,15 @@ export const API_BASE_URL = `${BACKEND_BASE_URL}/api`;
 export const WS_URL = (() => {
   const env = typeof process !== 'undefined' ? process.env.REACT_APP_WS_URL : undefined;
   if (env && env.trim()) return trimSlash(env.trim());
+  // Derivar desde BACKEND_BASE_URL si está disponible
+  const backend = typeof process !== 'undefined' ? process.env.REACT_APP_BACKEND_URL : undefined;
+  if (backend && backend.trim()) {
+    try {
+      const u = new URL(backend.trim());
+      const proto = u.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${proto}//${u.host}/ws`;
+    } catch (_) {}
+  }
   if (typeof window !== 'undefined') {
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${proto}//${window.location.host}/ws`;
