@@ -39,6 +39,24 @@ python evaluate_arc_score.py
 - **Backend API**: [http://localhost:8000](http://localhost:8000)
 - **Documentación API**: [http://localhost:8000/docs](http://localhost:8000/docs)
 
+## 🧑‍💻 Modo Desarrollo (sin Docker)
+
+Este modo permite iteración rápida: frontend con hot reload y backend local con WebSocket ARC.
+
+- Backend unificado (FastAPI + ARC WS):
+  - `cd backend && ./start-backend-dev.sh`
+  - Expone API en `http://<IP-LAN>:8000` y WebSocket ARC en `ws://<IP-LAN>:8765`.
+  - Configura CORS automáticamente para `localhost`, `127.0.0.1` y tu IP LAN.
+
+- Frontend React (CRA) con hot reload:
+  - `./start-frontend-dev.sh`
+  - Sirve en `http://localhost:3001` y también en `http://<IP-LAN>:3001`.
+  - Variables exportadas automáticamente: `REACT_APP_BACKEND_URL=http://<IP-LAN>:8000`, `REACT_APP_ARC_WS_URL=ws://<IP-LAN>:8765`.
+
+Notas:
+- En producción (Nginx), el cliente usa la ruta relativa `/arc-ws` que proxifica al puerto 8765 del backend.
+- Si necesitas forzar la URL de WebSocket en dev, exporta `REACT_APP_ARC_WS_URL` antes de ejecutar el script.
+
 ## 🏆 Resultados y Métricas
 
 ### Score en ARC Prize

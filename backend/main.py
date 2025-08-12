@@ -4,6 +4,8 @@ PROTEUS Backend - FastAPI Server
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+import os
+import json as _json
 from contextlib import asynccontextmanager
 import asyncio
 import json
@@ -47,9 +49,28 @@ app = FastAPI(
 )
 
 # CORS para permitir conexiones del frontend
+cors_env = os.getenv("CORS_ORIGINS")
+default_origins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+]
+if cors_env:
+    try:
+        # Permitir formato JSON (lista) o CSV simple
+        if cors_env.strip().startswith("["):
+            allow_origins = _json.loads(cors_env)
+        else:
+            allow_origins = [o.strip() for o in cors_env.split(",") if o.strip()]
+    except Exception:
+        allow_origins = default_origins
+else:
+    allow_origins = default_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

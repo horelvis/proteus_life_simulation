@@ -4,8 +4,11 @@
 
 export class ARCWebSocketClient {
   constructor(url = null) {
-    // Usar URL relativa para que pase por el proxy de nginx
-    this.url = url || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/arc-ws`;
+    // Permitir override por env en dev: REACT_APP_ARC_WS_URL
+    // Fallback seguro: ruta relativa vía Nginx: /arc-ws
+    const envUrl = typeof process !== 'undefined' ? process.env.REACT_APP_ARC_WS_URL : undefined;
+    const defaultRelative = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/arc-ws`;
+    this.url = url || (envUrl && envUrl.trim() ? envUrl.trim() : defaultRelative);
     this.ws = null;
     this.connected = false;
     this.reconnectAttempts = 0;
