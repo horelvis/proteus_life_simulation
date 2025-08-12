@@ -612,16 +612,59 @@ class StructuralAnalyzer:
         }
     
     def _detect_repetitive_patterns(self, matrix: np.ndarray) -> Dict[str, Any]:
-        """Detecta patrones repetitivos"""
-        return {'has_repetition': False}  # Placeholder
+        """Detecta patrones repetitivos simples por corrimiento horizontal/vertical"""
+        h, w = matrix.shape
+        best = {'has_repetition': False, 'direction': None, 'period': None, 'similarity': 0.0}
+        # Horizontal shifts
+        for shift in range(1, max(1, w // 2)):
+            left = matrix[:, :-shift]
+            right = matrix[:, shift:]
+            if left.shape == right.shape:
+                sim = float(np.mean(left == right))
+                if sim > best['similarity']:
+                    best = {'has_repetition': sim > 0.8, 'direction': 'horizontal', 'period': shift, 'similarity': sim}
+        # Vertical shifts
+        for shift in range(1, max(1, h // 2)):
+            top = matrix[:-shift, :]
+            bottom = matrix[shift:, :]
+            if top.shape == bottom.shape:
+                sim = float(np.mean(top == bottom))
+                if sim > best['similarity']:
+                    best = {'has_repetition': sim > 0.8, 'direction': 'vertical', 'period': shift, 'similarity': sim}
+        return best
     
     def _detect_gradients(self, matrix: np.ndarray) -> Dict[str, Any]:
-        """Detecta gradientes de color"""
-        return {'has_gradient': False}  # Placeholder
+        """Detecta gradientes básicos (tendencia de cambio por filas/columnas)"""
+        # Convertir a float para diferencias
+        m = matrix.astype(float)
+        # Diferencias promedio por eje
+        dx = np.mean(np.abs(np.diff(m, axis=1))) if m.shape[1] > 1 else 0.0
+        dy = np.mean(np.abs(np.diff(m, axis=0))) if m.shape[0] > 1 else 0.0
+        strength = float(max(dx, dy))
+        direction = 'horizontal' if dx >= dy else 'vertical'
+        return {
+            'has_gradient': strength > 0.2,  # umbral heurístico
+            'strength': strength,
+            'dominant_direction': direction,
+            'dx': float(dx),
+            'dy': float(dy)
+        }
     
     def _detect_textures(self, matrix: np.ndarray) -> Dict[str, Any]:
-        """Detecta texturas"""
-        return {'texture_complexity': 0.0}  # Placeholder
+        """Mide una complejidad de textura simple por contraste local"""
+        h, w = matrix.shape
+        if h < 2 and w < 2:
+            return {'texture_complexity': 0.0}
+        # Vecinos 4-conectados
+        diffs = []
+        # Horizontal
+        if w > 1:
+            diffs.append(np.mean(matrix[:, 1:] != matrix[:, :-1]))
+        # Vertical
+        if h > 1:
+            diffs.append(np.mean(matrix[1:, :] != matrix[:-1, :]))
+        complexity = float(np.mean(diffs)) if diffs else 0.0
+        return {'texture_complexity': complexity}
     
     def _check_diagonal_symmetry(self, matrix: np.ndarray, main: bool = True) -> Dict[str, Any]:
         """Verifica simetría diagonal"""

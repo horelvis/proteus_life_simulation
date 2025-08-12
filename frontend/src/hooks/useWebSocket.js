@@ -1,6 +1,16 @@
 import { useEffect, useState, useRef } from 'react';
 
-const WS_BASE_URL = 'ws://localhost:8000/ws';
+// Base WS: prioridad a REACT_APP_WS_URL, si no, usar ruta relativa /ws
+const WS_BASE_URL = (() => {
+  const env = typeof process !== 'undefined' ? process.env.REACT_APP_WS_URL : undefined;
+  if (env && env.trim()) return env.trim().replace(/\/$/, '');
+  if (typeof window !== 'undefined') {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    return `${proto}//${host}/ws`;
+  }
+  return 'ws://localhost:8000/ws';
+})();
 
 export const useWebSocket = (simulationId) => {
   const [connected, setConnected] = useState(false);

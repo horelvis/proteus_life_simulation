@@ -90,10 +90,16 @@ function AppBackend() {
   const worldSize = { width: 1600, height: 1200 };
 
   useEffect(() => {
+    const apiBase = (typeof process !== 'undefined' && process.env.REACT_APP_BACKEND_URL && process.env.REACT_APP_BACKEND_URL.trim())
+      ? process.env.REACT_APP_BACKEND_URL.trim().replace(/\/$/, '')
+      : (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://localhost:8000');
+    const wsBase = (typeof process !== 'undefined' && process.env.REACT_APP_WS_URL && process.env.REACT_APP_WS_URL.trim())
+      ? process.env.REACT_APP_WS_URL.trim().replace(/\/$/, '')
+      : (typeof window !== 'undefined' ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws` : 'ws://localhost:8000/ws');
     // Connect to WebSocket
     const connectWebSocket = () => {
       const clientId = `web-${Date.now()}`;
-      const ws = new WebSocket(`ws://localhost:8000/ws/${clientId}`);
+      const ws = new WebSocket(`${wsBase}/${clientId}`);
       
       ws.onopen = () => {
         console.log('Connected to PROTEUS backend');
@@ -155,7 +161,7 @@ function AppBackend() {
     // Fetch backend stats periodically
     const fetchStats = async () => {
       try {
-        const response = await fetch('http://localhost:8000/stats');
+        const response = await fetch(`${apiBase}/stats`);
         const stats = await response.json();
         setBackendStats(stats);
       } catch (error) {

@@ -1,7 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8000/api';
+// Base de API: prioridad a REACT_APP_BACKEND_URL, si no, usar ruta relativa /api
+const API_BASE_URL = (() => {
+  const env = typeof process !== 'undefined' ? process.env.REACT_APP_BACKEND_URL : undefined;
+  if (env && env.trim()) return `${env.replace(/\/$/, '')}/api`;
+  if (typeof window !== 'undefined') {
+    const proto = window.location.protocol;
+    const host = window.location.host;
+    return `${proto}//${host}/api`;
+  }
+  return 'http://localhost:8000/api';
+})();
 
 export const useSimulation = () => {
   const [simulationId, setSimulationId] = useState(null);
