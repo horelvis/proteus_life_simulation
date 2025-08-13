@@ -85,136 +85,6 @@ class RealTransformations:
         
         return result
     
-    @staticmethod
-    def detect_and_complete_pattern(input_grid: np.ndarray, output_grid: np.ndarray, 
-                                   test_grid: np.ndarray) -> Optional[np.ndarray]:
-        """
-        Intenta detectar el patrón de transformación y aplicarlo
-        Retorna None si no puede detectar el patrón
-        """
-        # Verificar si las dimensiones son compatibles
-        if input_grid.shape != output_grid.shape:
-            # Podría ser replicación
-            if (output_grid.shape[0] % input_grid.shape[0] == 0 and 
-                output_grid.shape[1] % input_grid.shape[1] == 0):
-                factor = max(output_grid.shape[0] // input_grid.shape[0],
-                           output_grid.shape[1] // input_grid.shape[1])
-                return RealTransformations.replicate_pattern(test_grid, factor)
-            else:
-                return None
-        
-        # Analizar qué cambió entre input y output
-        changes = []
-        h, w = input_grid.shape
-        
-        for i in range(h):
-            for j in range(w):
-                if input_grid[i, j] != output_grid[i, j]:
-                    changes.append({
-                        'pos': (i, j),
-                        'from': input_grid[i, j],
-                        'to': output_grid[i, j],
-                        'context': RealTransformations._get_context(input_grid, i, j)
-                    })
-        
-        if not changes:
-            # No hay cambios, retornar copia
-            return test_grid.copy()
-        
-        # Analizar el patrón de cambios
-        pattern_type = RealTransformations._analyze_changes(changes, input_grid, output_grid)
-        
-        # Aplicar el patrón detectado
-        if pattern_type == 'cross_expansion':
-            return RealTransformations.expand_cross(test_grid)
-        elif pattern_type == 'fill':
-            return RealTransformations.fill_enclosed_spaces(test_grid)
-        elif pattern_type == 'replication':
-            # Detectar factor
-            factor = max(output_grid.shape[0] // input_grid.shape[0],
-                        output_grid.shape[1] // input_grid.shape[1])
-            return RealTransformations.replicate_pattern(test_grid, factor)
-        else:
-            # No pudimos detectar el patrón
-            logger.warning(f"No se pudo detectar el patrón. Tipo: {pattern_type}")
-            return None
-    
-    @staticmethod
-    def _get_context(grid: np.ndarray, i: int, j: int) -> Dict[str, Any]:
-        """Obtiene el contexto alrededor de una posición"""
-        h, w = grid.shape
-        context = {
-            'neighbors': [],
-            'is_edge': i == 0 or i == h-1 or j == 0 or j == w-1,
-            'is_corner': (i, j) in [(0,0), (0,w-1), (h-1,0), (h-1,w-1)],
-            'is_center': i == h//2 and j == w//2
-        }
-        
-        # Vecinos cardinales
-        for di, dj in [(-1,0), (1,0), (0,-1), (0,1)]:
-            ni, nj = i + di, j + dj
-            if 0 <= ni < h and 0 <= nj < w:
-                context['neighbors'].append(grid[ni, nj])
-        
-        return context
-    
-    @staticmethod
-    def _analyze_changes(changes: list, input_grid: np.ndarray, 
-                        output_grid: np.ndarray) -> str:
-        """
-        Analiza los cambios para determinar el tipo de patrón
-        """
-        if not changes:
-            return 'identity'
-        
-        # Ver si todos los cambios son de 0 a algún valor
-        all_from_zero = all(c['from'] == 0 for c in changes)
-        
-        if all_from_zero:
-            # Ver si es expansión en cruz
-            # Un píxel no-cero expandido crea 4 nuevos píxeles
-            non_zero_count = np.count_nonzero(input_grid)
-            expected_cross_changes = non_zero_count * 4  # máximo posible
-            
-            # Verificar si los cambios están en posiciones de cruz
-            is_cross = True
-            for change in changes:
-                i, j = change['pos']
-                # Verificar si hay un valor no-cero adyacente en el input
-                has_adjacent = False
-                for di, dj in [(-1,0), (1,0), (0,-1), (0,1)]:
-                    ni, nj = i + di, j + dj
-                    if (0 <= ni < input_grid.shape[0] and 
-                        0 <= nj < input_grid.shape[1] and
-                        input_grid[ni, nj] == change['to']):
-                        has_adjacent = True
-                        break
-                
-                if not has_adjacent:
-                    is_cross = False
-                    break
-            
-            if is_cross:
-                return 'cross_expansion'
-            
-            # Ver si es relleno
-            # Los cambios deberían estar rodeados por el mismo valor
-            is_fill = True
-            for change in changes:
-                neighbors = change['context']['neighbors']
-                if not neighbors or change['to'] not in neighbors:
-                    is_fill = False
-                    break
-            
-            if is_fill:
-                return 'fill'
-        
-        # Ver si el output es más grande (replicación)
-        if output_grid.shape != input_grid.shape:
-            return 'replication'
-        
-        # Patrón no reconocido
-        return 'unknown'
     
     @staticmethod
     def apply_color_mapping(grid: np.ndarray, mapping: Dict[int, int]) -> np.ndarray:
@@ -351,28 +221,9 @@ def test_transformations_honestly():
     print(f"Esperado:\n{expected_fill}")
     print(f"✅ CORRECTO" if np.array_equal(result_fill, expected_fill) else "❌ INCORRECTO")
     
-    # Test 3: Detección automática
-    print("\n📌 Test 3: Detección Automática de Patrón")
-    train_input = np.array([[0,0,0],[0,1,0],[0,0,0]])
-    train_output = np.array([[0,1,0],[1,1,1],[0,1,0]])
-    test_input = np.array([[0,0,0],[0,2,0],[0,0,0]])
-    expected_auto = np.array([[0,2,0],[2,2,2],[0,2,0]])
-    
-    result_auto = RealTransformations.detect_and_complete_pattern(
-        train_input, train_output, test_input
-    )
-    
-    if result_auto is not None:
-        print(f"Resultado:\n{result_auto}")
-        print(f"Esperado:\n{expected_auto}")
-        print(f"✅ CORRECTO" if np.array_equal(result_auto, expected_auto) else "❌ INCORRECTO")
-    else:
-        print("❌ No pudo detectar el patrón")
-    
     return {
         'cross': np.array_equal(result_cross, expected_cross),
-        'fill': np.array_equal(result_fill, expected_fill),
-        'auto': np.array_equal(result_auto, expected_auto) if result_auto is not None else False
+        'fill': np.array_equal(result_fill, expected_fill)
     }
 
 if __name__ == "__main__":

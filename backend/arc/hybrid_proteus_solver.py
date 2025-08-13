@@ -5,64 +5,76 @@ Usa principios topológicos para guiar la selección de reglas
 """
 
 import numpy as np
-from typing import List, Dict, Any, Tuple
-from dataclasses import dataclass
-from scipy.ndimage import label, gaussian_filter
+from typing import List, Dict, Any, Tuple, Set
+from dataclasses import dataclass, field
+from scipy.ndimage import label
 
 from arc.arc_solver_python import ARCSolverPython, TransformationType
+# Importar los nuevos detectores de forma modular
+from arc.detectors.base import ObjectDetectorBase, DetectedObject
+from arc.detectors.classical_detector import ClassicalObjectDetector
+
+# Intentar importar el detector YOLO, pero no fallar si no está instalado
+try:
+    from arc.detectors.yolo_detector import YOLOObjectDetector
+    YOLO_AVAILABLE = True
+except (ImportError, FileNotFoundError):
+    YOLO_AVAILABLE = False
+
 
 @dataclass
 class TopologicalSignature:
-    """Firma topológica simplificada de un patrón"""
-    dimension: float          # Dimensión fractal
-    components: int          # Número de componentes conectados
-    holes: int              # Número de agujeros
-    density: float          # Densidad de valores no-cero
-    symmetry_score: float   # Puntuación de simetría
-    edge_ratio: float       # Ratio de píxeles en bordes
-    
-    def distance(self, other: 'TopologicalSignature') -> float:
-        """Distancia topológica entre firmas"""
-        return (
-            abs(self.dimension - other.dimension) +
-            abs(self.components - other.components) * 0.5 +
-            abs(self.holes - other.holes) * 0.3 +
-            abs(self.density - other.density) +
-            abs(self.symmetry_score - other.symmetry_score) * 0.7 +
-            abs(self.edge_ratio - other.edge_ratio) * 0.4
-        )
+    """Firma topológica y de objetos de un patrón."""
+    dimension: float
+    components: int
+    holes: int
+    density: float
+    symmetry_score: float
+    edge_ratio: float
+    detected_objects: Set[str] = field(default_factory=set)
+
+    def to_vector(self) -> np.ndarray:
+        """Convierte los campos numéricos de la firma a un vector numpy."""
+        return np.array([
+            self.dimension,
+            self.components,
+            self.holes,
+            self.density,
+            self.symmetry_score,
+            self.edge_ratio
+        ])
+
 
 class TopologicalAnalyzer:
-    """Analiza propiedades topológicas de grillas"""
-    
+    """Analiza propiedades topológicas y de objetos de las cuadrículas."""
+
+    def __init__(self, detector: ObjectDetectorBase):
+        self.detector = detector
+
     def analyze(self, grid: np.ndarray) -> TopologicalSignature:
-        """Extrae firma topológica de una grilla"""
-        # Dimensión fractal por box-counting
+        """Extrae la firma completa de una cuadrícula."""
+        # Análisis topológico existente
         dimension = self._compute_fractal_dimension(grid)
-        
-        # Componentes conectados
         binary = grid > 0
-        labeled, components = label(binary)
-        
-        # Agujeros (regiones de 0s completamente rodeadas)
+        _, components = label(binary)
         holes = self._count_holes(grid)
-        
-        # Densidad
-        density = np.sum(grid > 0) / grid.size
-        
-        # Simetría
+        density = np.sum(grid > 0) / grid.size if grid.size > 0 else 0
         symmetry_score = self._compute_symmetry(grid)
-        
-        # Ratio de bordes
         edge_ratio = self._compute_edge_ratio(grid)
         
+        # Nuevo: Análisis de objetos usando el detector configurado
+        detected_objects_data = self.detector.detect(grid)
+        # Usamos un conjunto de etiquetas para la comparación
+        object_labels = {obj.label for obj in detected_objects_data}
+
         return TopologicalSignature(
             dimension=dimension,
             components=components,
             holes=holes,
             density=density,
             symmetry_score=symmetry_score,
-            edge_ratio=edge_ratio
+            edge_ratio=edge_ratio,
+            detected_objects=object_labels
         )
     
     def _compute_fractal_dimension(self, grid: np.ndarray) -> float:
@@ -152,201 +164,157 @@ class TopologicalAnalyzer:
 
 class HybridProteusARCSolver(ARCSolverPython):
     """
-    Solver híbrido que usa análisis topológico para guiar la selección de reglas
+    Solver híbrido que usa un detector de objetos configurable y análisis topológico
+    para aprender de los ejemplos y guiar la selección de reglas.
     """
     
-    def __init__(self):
+    def __init__(self, detector_type: str = 'classical'):
         super().__init__()
-        self.analyzer = TopologicalAnalyzer()
-        self.rule_signatures = self._initialize_rule_signatures()
         
-    def _initialize_rule_signatures(self) -> Dict[TransformationType, List[TopologicalSignature]]:
-        """
-        Define firmas topológicas típicas para cada tipo de regla
-        """
-        return {
-            TransformationType.COLOR_MAPPING: [
-                TopologicalSignature(1.0, 1, 0, 0.5, 0.5, 0.3),  # Uniforme
-            ],
-            TransformationType.PATTERN_REPLICATION: [
-                TopologicalSignature(1.5, 1, 0, 0.2, 0.8, 0.1),  # Patrón pequeño
-            ],
-            TransformationType.FILL_SHAPE: [
-                TopologicalSignature(1.8, 1, 1, 0.6, 0.7, 0.8),  # Forma con agujero
-            ],
-            TransformationType.LINE_DRAWING: [
-                TopologicalSignature(1.2, 2, 0, 0.1, 0.3, 0.0),  # Puntos dispersos
-            ],
-            TransformationType.SYMMETRY_DETECTION: [
-                TopologicalSignature(1.5, 1, 0, 0.5, 0.9, 0.5),  # Alta simetría
-            ],
-            TransformationType.GRAVITY: [
-                TopologicalSignature(1.3, 3, 0, 0.3, 0.2, 0.0),  # Objetos separados
-            ],
-            TransformationType.ROTATION: [
-                TopologicalSignature(1.4, 1, 0, 0.4, 0.6, 0.4),  # Forma rotable
-            ],
-            TransformationType.REFLECTION: [
-                TopologicalSignature(1.4, 1, 0, 0.4, 0.8, 0.4),  # Forma reflejable
-            ],
-            TransformationType.PATTERN_EXTRACTION: [
-                TopologicalSignature(1.6, 3, 0, 0.7, 0.4, 0.3),  # Múltiples patrones
-            ],
-            TransformationType.COUNTING: [
-                TopologicalSignature(1.1, 5, 0, 0.2, 0.1, 0.0),  # Muchos componentes
-            ]
-        }
-    
-    def detect_rule(self, input_grid: np.ndarray, output_grid: np.ndarray) -> Dict[str, Any]:
-        """
-        Detecta regla usando análisis topológico para priorizar candidatos
-        """
-        # Análisis topológico de la transformación
-        input_sig = self.analyzer.analyze(input_grid)
-        output_sig = self.analyzer.analyze(output_grid)
-        
-        # Calcular cambio topológico
-        topology_change = {
-            'dimension_delta': output_sig.dimension - input_sig.dimension,
-            'components_delta': output_sig.components - input_sig.components,
-            'holes_delta': output_sig.holes - input_sig.holes,
-            'density_delta': output_sig.density - input_sig.density,
-            'symmetry_delta': output_sig.symmetry_score - input_sig.symmetry_score
-        }
-        
-        # Priorizar reglas basado en firma topológica
-        rule_scores = {}
-        
-        for rule_type, signatures in self.rule_signatures.items():
-            # Calcular distancia a firmas típicas
-            min_distance = min(
-                input_sig.distance(sig) for sig in signatures
-            ) if signatures else float('inf')
+        # Seleccionar el detector de objetos de forma modular
+        if detector_type == 'yolo' and YOLO_AVAILABLE:
+            print("👁️ Usando detector de objetos YOLO.")
+            detector = YOLOObjectDetector()
+        else:
+            if detector_type == 'yolo' and not YOLO_AVAILABLE:
+                print("⚠️  Detector YOLO no disponible, usando detector clásico como fallback.")
+            print("👁️ Usando detector de objetos clásico.")
+            detector = ClassicalObjectDetector()
             
-            # Ajustar por cambios topológicos esperados
-            score = 1.0 / (1.0 + min_distance)
-            
-            # Bonificaciones específicas
-            if rule_type == TransformationType.FILL_SHAPE and topology_change['holes_delta'] < 0:
-                score *= 2.0  # Reducir agujeros sugiere relleno
-            elif rule_type == TransformationType.LINE_DRAWING and topology_change['density_delta'] > 0:
-                score *= 1.5  # Aumentar densidad sugiere dibujo
-            elif rule_type == TransformationType.PATTERN_REPLICATION and output_grid.size > input_grid.size:
-                score *= 2.0  # Crecimiento sugiere replicación
-            elif rule_type == TransformationType.SYMMETRY_DETECTION and input_sig.symmetry_score > 0.8:
-                score *= 1.5  # Alta simetría inicial
-            
-            rule_scores[rule_type] = score
-        
-        # Ordenar reglas por puntuación
-        sorted_rules = sorted(rule_scores.items(), key=lambda x: x[1], reverse=True)
-        
-        # Probar reglas en orden de probabilidad topológica
-        for rule_type, score in sorted_rules:
-            detector = self._get_detector_for_type(rule_type)
-            if detector:
-                rule = detector(input_grid, output_grid)
-                if rule and rule['confidence'] > 0.7:
-                    # Asegurar que la regla tenga el tipo correcto
-                    rule['type'] = rule_type.value
-                    # Añadir información topológica
-                    rule['topology_score'] = score
-                    rule['topology_analysis'] = {
-                        'input_signature': input_sig,
-                        'output_signature': output_sig,
-                        'change': topology_change
-                    }
-                    return rule
-        
-        # Si ninguna regla específica funciona, usar la detección original
-        base_rule = super().detect_rule(input_grid, output_grid)
-        
-        # Asegurar formato correcto de la regla
-        if base_rule and not isinstance(base_rule.get('type'), str):
-            # Si 'type' no es string, intentar convertirlo
-            if hasattr(base_rule.get('type'), 'value'):
-                base_rule['type'] = base_rule['type'].value
-            elif base_rule.get('type') is not None:
-                base_rule['type'] = str(base_rule['type'])
-        
-        return base_rule
-    
-    def _get_detector_for_type(self, rule_type: TransformationType):
-        """Obtiene el detector para un tipo de regla específico"""
-        detector_map = {
-            TransformationType.COLOR_MAPPING: self._detect_color_mapping,
-            TransformationType.PATTERN_REPLICATION: self._detect_pattern_replication,
-            TransformationType.FILL_SHAPE: self._detect_fill_shape,
-            TransformationType.LINE_DRAWING: self._detect_line_drawing,
-            TransformationType.SYMMETRY_DETECTION: self._detect_symmetry,
-            TransformationType.GRAVITY: self._detect_gravity,
-            TransformationType.ROTATION: self._detect_rotation,
-            TransformationType.REFLECTION: self._detect_reflection,
-            TransformationType.PATTERN_EXTRACTION: self._detect_pattern_extraction,
-            TransformationType.COUNTING: self._detect_counting
-        }
-        return detector_map.get(rule_type)
-    
+        self.analyzer = TopologicalAnalyzer(detector=detector)
+        # Almacenará las firmas aprendidas: {rule_type: [TopologicalSignature, ...]}
+        self.learned_signatures = {}
+
     def solve_with_steps(self, 
                         train_examples: List[Dict[str, Any]], 
                         test_input: np.ndarray) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
         """
-        Resuelve usando análisis topológico para guiar la búsqueda
+        Resuelve usando un enfoque de aprendizaje topológico y de objetos:
+        1. Aprende las firmas de los ejemplos de entrenamiento.
+        2. Encuentra la regla que mejor se ajusta a la firma del caso de prueba.
         """
         steps = []
-        
-        # Paso 1: Análisis topológico del input de test
-        test_signature = self.analyzer.analyze(test_input)
-        steps.append({
-            'type': 'topological_analysis',
-            'description': f'Análisis topológico: dim={test_signature.dimension:.2f}, '
-                          f'componentes={test_signature.components}, '
-                          f'agujeros={test_signature.holes}'
-        })
-        
-        # Paso 2: Analizar transformaciones en ejemplos
-        transformation_patterns = []
-        
+        self.learned_signatures = {} # Reset for each puzzle
+
+        # Paso 1: Aprender de los ejemplos de entrenamiento
         for i, example in enumerate(train_examples):
             input_grid = np.array(example['input'])
             output_grid = np.array(example['output'])
             
-            # Detectar regla con guía topológica
-            rule = self.detect_rule(input_grid, output_grid)
+            rule = super().detect_rule(input_grid, output_grid)
             
-            if rule:
-                transformation_patterns.append(rule)
+            if rule and rule.get('type'):
+                rule_type = rule['type']
+                input_signature = self.analyzer.analyze(input_grid)
+
+                if rule_type not in self.learned_signatures:
+                    self.learned_signatures[rule_type] = []
+                self.learned_signatures[rule_type].append(input_signature)
+
                 steps.append({
-                    'type': 'rule_detection',
-                    'description': f'Ejemplo {i+1}: {rule.get("type", "Unknown")} '
-                                  f'(confianza: {rule.get("confidence", 0):.2f}, '
-                                  f'topología: {rule.get("topology_score", 0):.2f})',
-                    'rule': rule
+                    'type': 'learning',
+                    'description': f'Ejemplo {i+1}: Aprendida firma para regla "{rule_type}" '
+                                 f'con objetos: {input_signature.detected_objects or "ninguno"}'
                 })
-        
-        # Paso 3: Consenso topológico
-        if transformation_patterns:
-            # Usar la regla con mejor puntuación topológica
-            best_rule = max(transformation_patterns, 
-                           key=lambda r: r.get('topology_score', 0) * r['confidence'])
-            
+
+        if not self.learned_signatures:
             steps.append({
-                'type': 'rule_selection',
-                'description': f'Seleccionada: {best_rule.get("type", "Unknown")} basado en análisis topológico'
+                'type': 'fallback',
+                'description': 'No se aprendió ninguna firma. Usando el solver base.'
             })
+            return super().solve_with_steps(train_examples, test_input)
+
+        # Paso 2: Analizar la entrada de prueba y encontrar la mejor regla
+        test_signature = self.analyzer.analyze(test_input)
+        steps.append({
+            'type': 'analysis',
+            'description': f'Firma del test: objetos={test_signature.detected_objects or "ninguno"}, '
+                           f'comp={test_signature.components}, agujeros={test_signature.holes}'
+        })
+
+        # Paso 3: Encontrar la mejor regla usando cálculo de distancia vectorizado
+
+        # Aplanar la lista de firmas aprendidas para el cálculo vectorizado
+        all_learned_sigs = []
+        all_learned_rules = []
+        for rule_type, signatures in self.learned_signatures.items():
+            for sig in signatures:
+                all_learned_sigs.append(sig)
+                all_learned_rules.append(rule_type)
+
+        best_rule_type = None
+        if all_learned_sigs:
+            # Convertir firmas a una matriz numérica
+            learned_matrix = np.array([s.to_vector() for s in all_learned_sigs])
+            test_vector = test_signature.to_vector()
             
-            # Aplicar transformación - apply_rule espera (rule, input_grid)
-            solution = self.apply_rule(best_rule, test_input)
+            # Pesos para cada característica topológica
+            weights = np.array([1.0, 0.5, 0.8, 1.0, 0.7, 0.4])
             
+            # Calcular todas las distancias topológicas a la vez
+            topo_distances = np.sum(np.abs(learned_matrix - test_vector) * weights, axis=1)
+
+            # Calcular distancias de Jaccard (esto todavía requiere un bucle)
+            jaccard_distances = np.array([
+                1.0 - (len(test_signature.detected_objects.intersection(s.detected_objects)) /
+                       len(test_signature.detected_objects.union(s.detected_objects)))
+                if len(test_signature.detected_objects.union(s.detected_objects)) > 0 else 0.0
+                for s in all_learned_sigs
+            ])
+
+            # Distancia total combinada
+            total_distances = topo_distances + (jaccard_distances * 2.0)
+
+            # Encontrar el índice de la distancia mínima
+            best_idx = np.argmin(total_distances)
+            min_distance = total_distances[best_idx]
+            best_rule_type = all_learned_rules[best_idx]
+
             steps.append({
-                'type': 'transformation',
-                'description': f'Transformación aplicada con guía topológica'
+                'type': 'selection',
+                'description': f'Regla seleccionada: "{best_rule_type}" (distancia combinada: {min_distance:.2f})'
             })
+
+        if best_rule_type:
+
+            # Implementar consenso para los parámetros de la regla.
+            # En lugar de tomar los parámetros de la primera regla que coincida,
+            # recopilamos todos los parámetros y encontramos los más consistentes.
+            candidate_rules = []
+            for example in train_examples:
+                rule = super().detect_rule(np.array(example['input']), np.array(example['output']))
+                if rule and rule.get('type') == best_rule_type:
+                    candidate_rules.append(rule)
+
+            # Lógica de consenso
+            if candidate_rules:
+                # Para 'color_mapping', encontrar el mapeo más común.
+                if best_rule_type == TransformationType.COLOR_MAPPING.value:
+                    mappings = [tuple(sorted(r['parameters']['mapping'].items())) for r in candidate_rules if 'mapping' in r['parameters']]
+                    if mappings:
+                        most_common_mapping = max(set(mappings), key=mappings.count)
+                        rule_params = {'type': best_rule_type, 'parameters': {'mapping': dict(most_common_mapping)}, 'confidence': 1.0}
+                    else:
+                        rule_params = candidate_rules[0] # Fallback
+                else:
+                    # Para otras reglas, usar la de mayor confianza como antes.
+                    rule_params = max(candidate_rules, key=lambda r: r.get('confidence', 0))
+            else:
+                rule_params = None
+
+            if rule_params:
+                solution = self.apply_rule(rule_params, test_input)
+                steps.append({
+                    'type': 'transformation',
+                    'description': f'Transformación "{best_rule_type}" aplicada.'
+                })
+            else:
+                solution, original_steps = super().solve_with_steps(train_examples, test_input)
+                steps.extend(original_steps)
         else:
-            # Fallback al método original
             solution, original_steps = super().solve_with_steps(train_examples, test_input)
             steps.extend(original_steps)
-        
+
         return solution, steps
 
 def test_hybrid_solver():

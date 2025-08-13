@@ -1,21 +1,21 @@
-# ARC Logical Reasoning Network - Versión 6.0
 """
-Red de Razonamiento Lógico Puro
+ARC Solver Package
+------------------
 
-Sistema de 3 capas sin simulación de vida:
-- MACRO: Observación con V-JEPA (alto nivel)
-- MESO: Razonamiento sobre objetos
-- MICRO: Ejecución a nivel de píxeles
+Este paquete contiene la implementación del solver de puzzles ARC
+basado en el razonamiento topológico adaptativo.
 
-Flujo: Macro → Meso → Micro
+El solver principal es `HybridProteusARCSolver`.
 """
 
-from .logical_reasoning_network import LogicalReasoningNetwork
+from .hybrid_proteus_solver import HybridProteusARCSolver
+from .arc_solver_python import ARCSolverPython
+from .transformations_fixed import RealTransformations
 
-# Red de razonamiento lógico como sistema principal
-ARCSolver = LogicalReasoningNetwork
+# El solver híbrido es la implementación principal y recomendada.
+ARCSolver = HybridProteusARCSolver
 
-print("🧠 Red de Razonamiento Lógico (Macro→Meso→Micro)")
+print("🧠 ARC Solver con Razonamiento Topológico Adaptativo inicializado.")
 
-__version__ = "6.0.0"
-__all__ = ["LogicalReasoningNetwork", "ARCSolver"]
+__version__ = "7.0.0" # Version refactorizada
+__all__ = ["HybridProteusARCSolver", "ARCSolverPython", "RealTransformations", "ARCSolver"]

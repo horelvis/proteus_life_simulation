@@ -13,36 +13,29 @@ from arc.arc_dataset_loader import ARCDatasetLoader
 import json
 
 class RealARCSolver(HybridProteusARCSolver):
-    """Solver con transformaciones reales"""
+    """
+    Solver que utiliza el sistema híbrido Proteus.
+    Esta clase ahora actúa como un wrapper directo al solver principal,
+    asegurando que se utilice la lógica de razonamiento completa.
+    """
     
     def __init__(self):
         super().__init__()
-        self.transformations = RealTransformations()
-        self.hierarchical = HierarchicalAnalyzer()
-        self.emergent = EmergentRuleSystem()
+        # El HierarchicalAnalyzer y EmergentRuleSystem se inicializan en el padre
         
     def solve_puzzle(self, train_examples, test_input):
-        """Resuelve un puzzle y retorna la solución"""
-        # Primero intentar con detección automática
-        if len(train_examples) > 0:
-            first_example = train_examples[0]
-            input_grid = np.array(first_example['input'])
-            output_grid = np.array(first_example['output'])
-            
-            # Intentar detectar y aplicar el patrón
-            result = self.transformations.detect_and_complete_pattern(
-                input_grid, output_grid, np.array(test_input)
-            )
-            
-            if result is not None:
-                return result
-        
-        # Si no funciona, usar el método padre
+        """
+        Resuelve un puzzle usando el método de razonamiento completo.
+        """
         try:
-            solution = self.solve(train_examples, np.array(test_input))
+            # Llamar al método 'solve_with_steps', que es el punto de entrada correcto.
+            # Este método devuelve tanto la solución como los pasos de razonamiento.
+            solution, steps = self.solve_with_steps(train_examples, np.array(test_input))
             return solution
-        except:
-            # Si falla, retornar el input sin cambios
+        except Exception as e:
+            # Si el solver falla, retornar el input sin cambios para evitar errores.
+            # Esto es un fallback de seguridad.
+            print(f"Error durante la resolución del puzzle: {e}")
             return np.array(test_input)
 
 def evaluate_arc_dataset():
@@ -55,40 +48,8 @@ def evaluate_arc_dataset():
     # Cargar puzzles
     loader = ARCDatasetLoader()
     
-    # También vamos a probar con algunos puzzles simples que sabemos que funcionan
-    additional_puzzles = [
-        # Expansión de cruz (sabemos que funciona)
-        {
-            "id": "cross_expansion",
-            "train": [
-                {"input": [[0,0,0],[0,1,0],[0,0,0]], 
-                 "output": [[0,1,0],[1,1,1],[0,1,0]]},
-                {"input": [[0,0,0],[0,2,0],[0,0,0]], 
-                 "output": [[0,2,0],[2,2,2],[0,2,0]]}
-            ],
-            "test": [
-                {"input": [[0,0,0],[0,3,0],[0,0,0]], 
-                 "output": [[0,3,0],[3,3,3],[0,3,0]]}
-            ]
-        },
-        # Relleno (sabemos que funciona)
-        {
-            "id": "fill_shape",
-            "train": [
-                {"input": [[1,1,1],[1,0,1],[1,1,1]], 
-                 "output": [[1,1,1],[1,1,1],[1,1,1]]},
-                {"input": [[2,2,2,2],[2,0,0,2],[2,0,0,2],[2,2,2,2]], 
-                 "output": [[2,2,2,2],[2,2,2,2],[2,2,2,2],[2,2,2,2]]}
-            ],
-            "test": [
-                {"input": [[3,3,3],[3,0,3],[3,3,3]], 
-                 "output": [[3,3,3],[3,3,3],[3,3,3]]}
-            ]
-        }
-    ]
-    
-    # Combinar todos los puzzles
-    all_puzzles = loader.sample_puzzles + additional_puzzles
+    # Utilizar todos los puzzles de ejemplo definidos en el loader
+    all_puzzles = loader.sample_puzzles
     
     solver = RealARCSolver()
     results = []

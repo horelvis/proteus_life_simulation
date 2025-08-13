@@ -27,6 +27,7 @@ aiohttp==3.9.1
 # Image processing (for ARC)
 pillow==10.0.0
 matplotlib==3.7.2
+ultralytics==8.0.0
 
 # Optional components
 redis==5.0.7

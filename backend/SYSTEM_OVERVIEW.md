@@ -1,94 +1,56 @@
-# Sistema de Razonamiento Lógico para ARC
+# Arquitectura del Solver ARC: Razonamiento Topológico Adaptativo
 
-## Arquitectura de 3 Capas
+## Filosofía del Diseño
 
-### 🔭 MACRO (Observación de Alto Nivel)
-- **Componente**: Sistema de Análisis Jerárquico (`hierarchical_analyzer.py`)
-- **Función**: Observación global de patrones sin hardcodeo
-- **Características**:
-  - Análisis multi-nivel de patrones y transformaciones
-  - Detecta patrones emergentes: novel, repeated, variant
-  - Genera representaciones jerárquicas de la estructura
-  - Sin categorías predefinidas de transformación
+El objetivo de este sistema es resolver puzzles del "Abstraction and Reasoning Corpus" (ARC) a través de un razonamiento basado en propiedades estructurales y topológicas, en lugar de depender de un gran número de reglas de transformación hardcodeadas.
 
-### 🔬 MESO (Razonamiento sobre Objetos)
-- **Componente**: Sistema de Reglas Emergentes (`emergent_rule_system.py`)
-- **Función**: Razonamiento sobre objetos y relaciones
-- **Características**:
-  - Extrae reglas de objetos y formas
-  - Identifica transformaciones entre objetos
-  - Construye cadenas de razonamiento
-  - Prioriza reglas basándose en comprensión macro
+El principio clave es que la *forma* y la *estructura* de los datos de entrada pueden guiar la selección de la transformación correcta. El sistema aprende las características topológicas asociadas a diferentes transformaciones a partir de los ejemplos de entrenamiento de un puzzle y luego aplica este conocimiento para resolver el caso de prueba.
 
-### ⚛️ MICRO (Ejecución Detallada)
-- **Componente**: Ejecución a nivel de píxeles
-- **Función**: Implementación de transformaciones
-- **Características**:
-  - Aplica reglas micro a píxeles individuales
-  - Ejecuta transformaciones espaciales
-  - Maneja cambios de tamaño dinámicamente
-  - Operaciones optimizables con GPU
+## Arquitectura Principal
 
-## Flujo de Información
+El sistema se centra en el `HybridProteusARCSolver`, que implementa la siguiente lógica:
+
+1.  **Análisis Topológico**: Utiliza un `TopologicalAnalyzer` para extraer una "firma" de cada grid. Esta firma es un vector de características que describe la estructura del grid.
+    *   **Dimensión Fractal**: Mide la complejidad del patrón.
+    *   **Componentes Conectados**: Número de "islas" o grupos de píxeles.
+    *   **Agujeros**: Número de espacios vacíos rodeados.
+    *   **Densidad**: Porcentaje de píxeles no nulos.
+    *   **Simetría**: Puntuación de simetría horizontal/vertical.
+    *   **Ratio de Borde**: Proporción de píxeles en los bordes.
+
+2.  **Fase de Aprendizaje**: Para un puzzle dado, el solver itera sobre todos los ejemplos de entrenamiento (`train_examples`).
+    *   Para cada par `(input, output)`, utiliza un conjunto de detectores de reglas base (`ARCSolverPython`) para identificar la transformación que convierte la entrada en la salida (p. ej., `FILL_SHAPE`, `COLOR_MAPPING`).
+    *   Calcula la firma topológica del grid de **entrada**.
+    *   Almacena esta firma, asociándola con la regla de transformación encontrada. Esto crea un mapa dinámico de `regla -> [lista de firmas que la activan]`.
+
+3.  **Fase de Inferencia**: Una vez que el aprendizaje ha finalizado, el solver aborda el grid de prueba (`test_input`).
+    *   Calcula la firma topológica del grid de prueba.
+    *   Compara la firma del grid de prueba con **todas las firmas aprendidas** de la fase de entrenamiento, calculando la "distancia" topológica.
+    *   La regla asociada a la firma aprendida más cercana (con la distancia mínima) se selecciona como la transformación más probable.
+    *   Se recuperan los parámetros específicos de esa regla (p. ej., el mapa de colores) a partir del ejemplo de entrenamiento correspondiente.
+    *   La regla se aplica al grid de prueba para generar la solución.
+
+## Flujo de Razonamiento
 
 ```
-Input → MACRO (Análisis) → MESO (Objetos) → MICRO (Píxeles) → Output
-         ↓                  ↓                ↓
-    Observación       Razonamiento      Ejecución
-    Jerárquica        Lógico            Detallada
+PARA CADA puzzle:
+  1. INICIALIZAR mapa de firmas aprendidas (vacío)
+  2. PARA CADA ejemplo de entrenamiento:
+     a. DETECTAR regla de transformación (base)
+     b. CALCULAR firma topológica del INPUT
+     c. GUARDAR firma en el mapa, asociada a la regla
+  3. CALCULAR firma topológica del grid de PRUEBA
+  4. BUSCAR la firma aprendida más CERCANA a la firma de prueba
+  5. SELECCIONAR la regla asociada a esa firma
+  6. APLICAR regla al grid de prueba -> SOLUCIÓN
 ```
 
-## Características Clave
+## Componentes Clave
 
-### ✅ Sin Hardcodeo
-- No hay tipos predefinidos de transformación
-- Patrones emergen de la observación
-- Aprendizaje dinámico de transformaciones
+1.  **`hybrid_proteus_solver.py`**: Contiene la lógica principal del `HybridProteusARCSolver` y el `TopologicalAnalyzer`. Es el cerebro del sistema.
+2.  **`arc_solver_python.py`**: Proporciona las implementaciones base para la detección y aplicación de reglas de transformación individuales. Actúa como la "caja de herramientas" que el solver híbrido utiliza de forma inteligente.
+3.  **`evaluate_arc_score.py`**: Script para evaluar el rendimiento del solver en el dataset ARC de forma honesta.
 
-### ✅ Razonamiento Lógico Puro
-- Sin simulación de vida
-- Inferencias lógicas explícitas en cada nivel
-- Cadenas de razonamiento trazables
+## Estado Actual
 
-### ✅ Escalable con GPU
-- Operaciones matriciales optimizables
-- Embeddings calculables en paralelo
-- Convoluciones para detección de patrones
-
-## Rendimiento Actual
-
-- **Accuracy promedio**: 83.1% en puzzles oficiales
-- **Tiempo de inferencia**: ~1-2ms por puzzle
-- **Tests pasados**: 100% (4/4)
-
-## Componentes Principales
-
-1. **`logical_reasoning_network.py`**: Orquestador principal
-2. **`vjepa_observer.py`**: Observación sin hardcodeo (V-JEPA)
-3. **`emergent_rule_system.py`**: Sistema de reglas de 3 niveles
-4. **`hierarchical_analyzer.py`**: Análisis jerárquico de estructuras
-
-## Mejoras Pendientes
-
-1. ✅ Eliminar funciones no implementadas
-2. ✅ Eliminar TODOs y FIXMEs
-3. ✅ Eliminar IFs innecesarios
-4. ⏳ Optimización completa con GPU
-5. ✅ Tests exhaustivos paso a paso
-
-## Uso
-
-```python
-from arc import ARCSolver
-
-solver = ARCSolver()  # LogicalReasoningNetwork
-solution = solver.reason(train_examples, test_input)
-
-# Acceso a inferencias
-for inference in solver.inferences:
-    print(f"[{inference.level}] {inference.conclusion}")
-```
-
-## Estado: Operativo ✅
-
-Sistema funcionando sin simulación de vida, puro razonamiento lógico.
+El sistema es funcional y se basa en un principio de razonamiento sólido y honesto. El rendimiento ya no se infla con casos de prueba hardcodeados. Las futuras mejoras se centrarán en enriquecer la firma topológica y mejorar los detectores de reglas base.

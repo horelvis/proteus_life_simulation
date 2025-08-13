@@ -4,6 +4,7 @@ Implementación del solucionador de puzzles ARC con transparencia total
 """
 
 import numpy as np
+import torch
 from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
@@ -41,12 +42,14 @@ class ReasoningStep:
     changes: List[Dict[str, int]]
     
 class ARCSolverPython:
-    def __init__(self):
+    def __init__(self, device: str = 'cpu'):
         self.rules = []
         self.reasoning_steps = []
         self.confidence = 0.0
         self.augmenter = ARCAugmentation()
         self.use_augmentation = True
+        self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
+        print(f"🚀 ARCSolverPython inicializado en el dispositivo: {self.device}")
         
         # Sistema de razonamiento transparente (migrado de JS)
         self.razonamiento_pasos = []
@@ -219,7 +222,9 @@ class ARCSolverPython:
         })
         
         # Paso 3: Aplicar regla al test
-        solution = self.apply_rule(best_rule, test_input)
+        test_input_tensor = torch.from_numpy(test_input).to(self.device)
+        solution_tensor = self.apply_rule(best_rule, test_input_tensor)
+        solution = solution_tensor.cpu().numpy() # Convertir de vuelta a numpy para la salida
         
         # Registrar pasos de aplicación
         self._generate_application_steps(best_rule, test_input, solution)
@@ -295,33 +300,41 @@ class ARCSolverPython:
         
         return results
         
-    def apply_rule(self, rule: Dict[str, Any], input_grid: np.ndarray) -> np.ndarray:
-        """Aplica una regla a un grid de entrada"""
+    def apply_rule(self, rule: Dict[str, Any], input_grid: torch.Tensor) -> torch.Tensor:
+        """Aplica una regla a un tensor de entrada."""
         rule_type = TransformationType(rule['type'])
         parameters = rule.get('parameters', {})
         
-        if rule_type == TransformationType.COLOR_MAPPING:
-            return self._apply_color_mapping(input_grid, parameters['mapping'])
-        elif rule_type == TransformationType.PATTERN_REPLICATION:
-            return self._apply_pattern_replication(input_grid, parameters.get('factor', 3))
-        elif rule_type == TransformationType.REFLECTION:
+        # Las funciones de aplicación ahora esperan tensores de PyTorch
+        if rule_type == TransformationType.REFLECTION:
             return self._apply_reflection(input_grid, parameters.get('axis', 'horizontal'))
         elif rule_type == TransformationType.ROTATION:
             return self._apply_rotation(input_grid, parameters.get('degrees', 90))
+
+        # Para otras operaciones, convertir temporalmente a numpy si no están portadas
+        # NOTA: Para una aceleración completa, estas también deberían ser portadas a PyTorch.
+        input_np = input_grid.cpu().numpy()
+
+        if rule_type == TransformationType.COLOR_MAPPING:
+            output_np = self._apply_color_mapping(input_np, parameters['mapping'])
+        elif rule_type == TransformationType.PATTERN_REPLICATION:
+            output_np = self._apply_pattern_replication(input_np, parameters.get('factor', 3))
         elif rule_type == TransformationType.GRAVITY:
-            return self._apply_gravity(input_grid)
+            output_np = self._apply_gravity(input_np)
         elif rule_type == TransformationType.COUNTING:
-            return self._apply_counting(input_grid)
+            output_np = self._apply_counting(input_np)
         elif rule_type == TransformationType.FILL_SHAPE:
-            return self._apply_fill_shape(input_grid, parameters.get('fill_color', 3))
+            output_np = self._apply_fill_shape(input_np, parameters.get('fill_color', 3))
         elif rule_type == TransformationType.SYMMETRY_DETECTION:
-            return self._apply_symmetry_detection(input_grid)
+            output_np = self._apply_symmetry_detection(input_np)
         elif rule_type == TransformationType.PATTERN_EXTRACTION:
-            return self._apply_pattern_extraction(input_grid)
+            output_np = self._apply_pattern_extraction(input_np)
         elif rule_type == TransformationType.LINE_DRAWING:
-            return self._apply_line_drawing(input_grid, parameters.get('color', 2))
+            output_np = self._apply_line_drawing(input_np, parameters.get('color', 2))
         else:
-            return input_grid
+            output_np = input_np
+
+        return torch.from_numpy(output_np).to(self.device)
             
     # Detectores de reglas
     
@@ -593,17 +606,20 @@ class ARCSolverPython:
                 
         return result
         
-    def _apply_reflection(self, grid: np.ndarray, axis: str) -> np.ndarray:
-        """Aplica reflexión"""
+    def _apply_reflection(self, grid: torch.Tensor, axis: str) -> torch.Tensor:
+        """Aplica reflexión usando PyTorch."""
         if axis == 'horizontal':
-            return np.fliplr(grid)
-        else:
-            return np.flipud(grid)
+            return torch.fliplr(grid)
+        else: # vertical
+            return torch.flipud(grid)
             
-    def _apply_rotation(self, grid: np.ndarray, degrees: int) -> np.ndarray:
-        """Aplica rotación"""
+    def _apply_rotation(self, grid: torch.Tensor, degrees: int) -> torch.Tensor:
+        """Aplica rotación usando PyTorch."""
+        # k es el número de rotaciones de 90 grados
+        # k=1: 90, k=2: 180, k=3: 270
         k = degrees // 90
-        return np.rot90(grid, k)
+        # PyTorch rot90 rota en sentido anti-horario, dims=(1,0) para rotar en el plano 2D
+        return torch.rot90(grid, k, dims=(0, 1))
         
     def _apply_counting(self, grid: np.ndarray) -> np.ndarray:
         """Cuenta elementos no-cero"""
