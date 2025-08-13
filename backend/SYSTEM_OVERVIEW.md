@@ -3,12 +3,12 @@
 ## Arquitectura de 3 Capas
 
 ### 🔭 MACRO (Observación de Alto Nivel)
-- **Componente**: V-JEPA Observer (`vjepa_observer.py`)
+- **Componente**: Sistema de Análisis Jerárquico (`hierarchical_analyzer.py`)
 - **Función**: Observación global de patrones sin hardcodeo
 - **Características**:
-  - Aprende transformaciones en espacio latente (no píxeles)
+  - Análisis multi-nivel de patrones y transformaciones
   - Detecta patrones emergentes: novel, repeated, variant
-  - Genera embeddings de 64-256 dimensiones
+  - Genera representaciones jerárquicas de la estructura
   - Sin categorías predefinidas de transformación
 
 ### 🔬 MESO (Razonamiento sobre Objetos)
@@ -32,10 +32,10 @@
 ## Flujo de Información
 
 ```
-Input → MACRO (V-JEPA) → MESO (Objetos) → MICRO (Píxeles) → Output
-         ↓                ↓                ↓
-    Observación     Razonamiento      Ejecución
-    Global          Lógico            Detallada
+Input → MACRO (Análisis) → MESO (Objetos) → MICRO (Píxeles) → Output
+         ↓                  ↓                ↓
+    Observación       Razonamiento      Ejecución
+    Jerárquica        Lógico            Detallada
 ```
 
 ## Características Clave
