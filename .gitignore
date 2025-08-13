@@ -62,3 +62,16 @@ htmlcov/
 # Experiment outputs (if you want to keep them local)
 # experiment_results/
 # output/
+
+# Model weights and large files
+*.pth
+*.pt
+*.ckpt
+*.h5
+*.pkl
+*.pickle
+backend/arc/yolo_weights/
+backend/arc/vjepa_*_weights/
+backend/arc/*_weights/
+backend/arc_official_cache/
+*.weights
