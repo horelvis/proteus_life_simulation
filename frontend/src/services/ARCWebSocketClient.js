@@ -48,6 +48,16 @@ export class ARCWebSocketClient {
           opened = true;
           clearTimeout(timeoutId);
           
+          // Emitir evento de conexión para componentes que lo esperan
+          const connectedHandlers = this.messageHandlers.get('connected') || [];
+          connectedHandlers.forEach(handler => {
+            try {
+              handler({ type: 'connected', message: 'Conectado al servidor ARC' });
+            } catch (error) {
+              console.error('Error en handler connected:', error);
+            }
+          });
+          
           // Procesar mensajes en cola
           this.processMessageQueue();
           
@@ -68,6 +78,17 @@ export class ARCWebSocketClient {
         this.ws.onclose = (ev) => {
           console.log('🔌 Conexión cerrada', ev?.code, ev?.reason || '');
           this.connected = false;
+          
+          // Emitir evento de desconexión
+          const disconnectedHandlers = this.messageHandlers.get('disconnected') || [];
+          disconnectedHandlers.forEach(handler => {
+            try {
+              handler({ type: 'disconnected', message: 'Desconectado del servidor ARC' });
+            } catch (error) {
+              console.error('Error en handler disconnected:', error);
+            }
+          });
+          
           this.handleDisconnect();
         };
 
@@ -115,6 +136,7 @@ export class ARCWebSocketClient {
       this.messageHandlers.set(messageType, []);
     }
     this.messageHandlers.get(messageType).push(handler);
+    console.log(`✅ Handler registrado para: ${messageType}, Total: ${this.messageHandlers.get(messageType).length}`);
   }
 
   /**
@@ -136,7 +158,7 @@ export class ARCWebSocketClient {
   handleMessage(data) {
     try {
       const message = JSON.parse(data);
-      console.log('📨 Mensaje recibido:', message.type);
+      console.log('📨 Mensaje recibido:', message.type, message);
 
       // Guardar session ID si viene en el mensaje
       if (message.session_id) {
@@ -145,6 +167,7 @@ export class ARCWebSocketClient {
 
       // Ejecutar manejadores registrados
       const handlers = this.messageHandlers.get(message.type) || [];
+      console.log(`Handlers para ${message.type}:`, handlers.length);
       handlers.forEach(handler => {
         try {
           handler(message);
@@ -158,7 +181,7 @@ export class ARCWebSocketClient {
       allHandlers.forEach(handler => handler(message));
 
     } catch (error) {
-      console.error('Error procesando mensaje:', error);
+      console.error('Error procesando mensaje:', error, 'Data:', data);
     }
   }
 
@@ -278,3 +301,5 @@ export class ARCWebSocketClient {
     return this.sessionId;
   }
 }
+
+export default ARCWebSocketClient;

@@ -30,13 +30,27 @@ class NumpyEncoder(json.JSONEncoder):
             return bool(obj)
         return super(NumpyEncoder, self).default(obj)
 
-from .arc_solver_python import ARCSolverPython
-from .arc_visualizer import ARCVisualizer
-from .arc_dataset_loader import ARCDatasetLoader
-# from .arc_swarm_solver import ARCSwarmSolver  # Comentado: módulo no existe
-from .arc_official_loader import ARCOfficialLoader
-from .arc_image_processor import ARCImageProcessor
-from .arc_api_client import ARCApiClient
+try:
+    # Imports relativos cuando se ejecuta como módulo
+    from .arc_solver_python import ARCSolverPython
+    from .arc_visualizer import ARCVisualizer
+    from .arc_dataset_loader import ARCDatasetLoader
+    from .arc_official_loader import ARCOfficialLoader
+    from .arc_image_processor import ARCImageProcessor
+    from .arc_api_client import ARCApiClient
+    from .real_processor import RealARCProcessor
+except ImportError:
+    # Imports absolutos cuando se ejecuta directamente
+    from arc_solver_python import ARCSolverPython
+    from arc_visualizer import ARCVisualizer
+    from arc_dataset_loader import ARCDatasetLoader
+    from arc_official_loader import ARCOfficialLoader
+    from arc_image_processor import ARCImageProcessor
+    from arc_api_client import ARCApiClient
+    try:
+        from real_processor import RealARCProcessor
+    except ImportError:
+        RealARCProcessor = None
 
 # Configurar logging
 logging.basicConfig(
@@ -59,6 +73,8 @@ class ARCWebSocketServer:
         self.active_sessions = {}
         self.puzzles = []  # Almacenar puzzles cargados
         self.api_puzzles_cache = {}  # Cache de puzzles de la API
+        self.current_puzzles = {}  # Puzzles cargados por ID
+        self.real_processor = None  # Procesador real transparente
         
         # Benchmarks de LLMs en ARC (según docs.arcprize.org)
         self.llm_benchmarks = {
@@ -139,6 +155,12 @@ class ARCWebSocketServer:
                 await self.handle_validate_solution(websocket, data)
             elif msg_type == 'load_api_puzzles':
                 await self.handle_load_api_puzzles(websocket, data)
+            elif msg_type == 'process_puzzle_real':
+                await self.handle_process_puzzle_real(websocket, data)
+            elif msg_type == 'load_puzzle':
+                await self.handle_load_puzzle(websocket, data)
+            elif msg_type == 'list_puzzles':
+                await self.handle_list_puzzles(websocket, data)
             else:
                 await self.send_message(websocket, {
                     'type': 'error',
@@ -611,6 +633,7 @@ class ARCWebSocketServer:
     
     def _serialize_puzzle(self, puzzle: Dict[str, Any]) -> Dict[str, Any]:
         """Serializa un puzzle para enviar por WebSocket"""
+        # Ahora siempre usamos formato estándar train/test
         return {
             'id': puzzle.get('id', 'unknown'),
             'category': puzzle.get('category', 'unknown'),
@@ -785,6 +808,206 @@ class ARCWebSocketServer:
                 'type': 'error',
                 'message': f"Error analizando imagen: {result.get('error')}"
             })
+    
+    async def handle_list_puzzles(self, websocket, data):
+        """Lista puzzles disponibles"""
+        try:
+            # Listar archivos de puzzle disponibles
+            puzzle_files = self.official_loader.get_sample_puzzles()
+            
+            await self.send_message(websocket, {
+                'type': 'puzzles_list',
+                'puzzles': puzzle_files[:20]  # Limitar a 20 para no sobrecargar
+            })
+        except Exception as e:
+            await self.send_message(websocket, {
+                'type': 'error',
+                'message': f'Error listando puzzles: {str(e)}'
+            })
+    
+    async def handle_load_puzzle(self, websocket, data):
+        """Carga un puzzle específico"""
+        try:
+            puzzle_id = data.get('puzzle_id')
+            
+            # Cargar puzzle oficial usando load_specific_puzzles con una lista de un elemento
+            puzzles = self.official_loader.load_specific_puzzles([puzzle_id])
+            
+            if puzzles and len(puzzles) > 0:
+                puzzle = puzzles[0]
+                # Guardar en caché
+                self.current_puzzles[puzzle_id] = puzzle
+                
+                # Generar visualización del puzzle
+                visualization_data = {}
+                try:
+                    # El formato ahora siempre es train/test
+                    train_data = puzzle.get('train', [])
+                    test_data = puzzle.get('test', [])
+                    
+                    # Generar imágenes para TODOS los ejemplos de entrenamiento
+                    import base64
+                    import numpy as np
+                    from io import BytesIO
+                    
+                    visualization_data = {
+                        'train_examples': [],
+                        'test_examples': []
+                    }
+                    
+                    # Procesar todos los ejemplos de entrenamiento
+                    if train_data and len(train_data) > 0:
+                        for idx, example in enumerate(train_data):
+                            try:
+                                # Obtener input y output del ejemplo
+                                if hasattr(example, 'input'):
+                                    input_grid = example.input
+                                    output_grid = example.output
+                                else:
+                                    input_grid = example.get('input', [])
+                                    output_grid = example.get('output', [])
+                                
+                                # Convertir a numpy array si es necesario
+                                if not isinstance(input_grid, np.ndarray):
+                                    input_grid = np.array(input_grid)
+                                if not isinstance(output_grid, np.ndarray):
+                                    output_grid = np.array(output_grid)
+                                
+                                # Visualizar input y output
+                                input_img = self.visualizer.create_grid_image(input_grid, title="Input")
+                                output_img = self.visualizer.create_grid_image(output_grid, title="Output")
+                                
+                                # Input image
+                                buffer_input = BytesIO()
+                                input_img.save(buffer_input, format='PNG')
+                                input_b64 = base64.b64encode(buffer_input.getvalue()).decode('utf-8')
+                                
+                                # Output image
+                                buffer_output = BytesIO()
+                                output_img.save(buffer_output, format='PNG')
+                                output_b64 = base64.b64encode(buffer_output.getvalue()).decode('utf-8')
+                                
+                                visualization_data['train_examples'].append({
+                                    'index': idx,
+                                    'input_image': input_b64,
+                                    'output_image': output_b64
+                                })
+                            except Exception as e:
+                                logger.warning(f"Error generando imagen para ejemplo {idx}: {e}")
+                    
+                    # Procesar ejemplos de test
+                    if test_data and len(test_data) > 0:
+                        for idx, example in enumerate(test_data):
+                            try:
+                                if hasattr(example, 'input'):
+                                    test_input_grid = example.input
+                                    # Test puede no tener output
+                                    test_output_grid = example.output if hasattr(example, 'output') else None
+                                else:
+                                    test_input_grid = example.get('input', [])
+                                    test_output_grid = example.get('output')
+                                
+                                # Convertir a numpy array si es necesario
+                                if not isinstance(test_input_grid, np.ndarray):
+                                    test_input_grid = np.array(test_input_grid)
+                                
+                                test_input_img = self.visualizer.create_grid_image(test_input_grid, title="Test Input")
+                                buffer_test = BytesIO()
+                                test_input_img.save(buffer_test, format='PNG')
+                                test_input_b64 = base64.b64encode(buffer_test.getvalue()).decode('utf-8')
+                                
+                                test_example_data = {
+                                    'index': idx,
+                                    'input_image': test_input_b64
+                                }
+                                
+                                # Si hay output en el test, generarlo también
+                                if test_output_grid:
+                                    if not isinstance(test_output_grid, np.ndarray):
+                                        test_output_grid = np.array(test_output_grid)
+                                    test_output_img = self.visualizer.create_grid_image(test_output_grid, title="Expected Output")
+                                    buffer_test_out = BytesIO()
+                                    test_output_img.save(buffer_test_out, format='PNG')
+                                    test_output_b64 = base64.b64encode(buffer_test_out.getvalue()).decode('utf-8')
+                                    test_example_data['output_image'] = test_output_b64
+                                
+                                visualization_data['test_examples'].append(test_example_data)
+                            except Exception as e:
+                                logger.warning(f"Error generando imagen para test {idx}: {e}")
+                            
+                except Exception as e:
+                    logger.warning(f"No se pudo generar visualización: {e}")
+                
+                # Enviar puzzle con visualización
+                puzzle_data = self._serialize_puzzle(puzzle)
+                puzzle_data['visualization'] = visualization_data
+                
+                await self.send_message(websocket, {
+                    'type': 'puzzle_loaded',
+                    'puzzle': puzzle_data
+                })
+            else:
+                await self.send_message(websocket, {
+                    'type': 'error',
+                    'message': f'Puzzle {puzzle_id} no encontrado'
+                })
+        except Exception as e:
+            await self.send_message(websocket, {
+                'type': 'error',
+                'message': f'Error cargando puzzle: {str(e)}'
+            })
+    
+    async def handle_process_puzzle_real(self, websocket, data):
+        """Procesa un puzzle con el procesador REAL transparente"""
+        try:
+            import traceback
+            puzzle_id = data.get('puzzle_id')
+            verbose = data.get('verbose', True)
+            
+            if puzzle_id not in self.current_puzzles:
+                await self.send_message(websocket, {
+                    'type': 'error',
+                    'message': f'Puzzle {puzzle_id} no está cargado'
+                })
+                return
+            
+            # Inicializar procesador real si no existe
+            if not self.real_processor and RealARCProcessor:
+                self.real_processor = RealARCProcessor(websocket_handler=self)
+            elif not RealARCProcessor:
+                await self.send_message(websocket, {
+                    'type': 'error',
+                    'message': 'Procesador real no disponible'
+                })
+                return
+            
+            # Procesar puzzle de forma transparente
+            puzzle_data = self.current_puzzles[puzzle_id]
+            result = await self.real_processor.process_puzzle(puzzle_data, verbose=verbose)
+            
+            # El procesador ya envía updates en tiempo real
+            # Solo enviamos el resultado final si es necesario
+            if not result['success']:
+                await self.send_message(websocket, {
+                    'type': 'error',
+                    'message': f"Procesamiento falló: {', '.join(result['errors'])}"
+                })
+            
+        except Exception as e:
+            logger.error(f"Error en procesamiento real: {e}")
+            logger.error(traceback.format_exc())
+            await self.send_message(websocket, {
+                'type': 'error',
+                'message': f'Error: {str(e)}'
+            })
+    
+    async def send_to_all(self, message):
+        """Envía mensaje a todos los clientes conectados"""
+        if self.clients:
+            await asyncio.gather(
+                *[self.send_message(client, message) for client in self.clients],
+                return_exceptions=True
+            )
     
     async def start(self):
         """Inicia el servidor WebSocket"""

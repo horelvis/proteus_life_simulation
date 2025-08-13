@@ -20,8 +20,13 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
+# Copy requirements files
+COPY requirements*.txt ./
+
+# Install PyTorch with CUDA support first (separate to avoid conflicts)
+RUN pip install --no-cache-dir -r requirements-torch.txt
+
+# Then install other requirements (without PyTorch)
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy all modules and scripts
@@ -29,6 +34,7 @@ COPY proteus /app/proteus
 COPY app /app/app
 COPY arc /app/arc
 COPY *.py /app/
+COPY entrypoint.sh /app/entrypoint.sh
 
 # Environment variables
 ENV PYTHONPATH=/app
@@ -39,9 +45,8 @@ ENV DISPLAY=:99
 # Expose ports for both servers
 EXPOSE 8000 8765
 
-# Create entrypoint script for xvfb and unified server
-RUN echo '#!/bin/bash\nXvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &\nsleep 2\npython unified_server.py' > /app/entrypoint.sh && \
-    chmod +x /app/entrypoint.sh
+# Make entrypoint executable
+RUN chmod +x /app/entrypoint.sh
 
 # Run with virtual display
 CMD ["/app/entrypoint.sh"]

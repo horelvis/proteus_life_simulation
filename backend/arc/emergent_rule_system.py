@@ -94,10 +94,30 @@ class EmergentRuleSystem:
         Extrae reglas a nivel de píxel comparando input y output
         """
         micro_rules = []
-        h, w = input_grid.shape
         
-        for i in range(h):
-            for j in range(w):
+        # Manejar diferentes tamaños
+        if input_grid.shape != output_grid.shape:
+            # Regla de cambio de tamaño
+            h_ratio = output_grid.shape[0] / input_grid.shape[0]
+            w_ratio = output_grid.shape[1] / input_grid.shape[1]
+            
+            micro_rules.append(MicroRule(
+                level="pixel",
+                pattern="resize",
+                condition={"shape_change": True},
+                action={"h_ratio": h_ratio, "w_ratio": w_ratio},
+                confidence=0.9,
+                support=1
+            ))
+            
+            # Analizar solo la región común
+            min_h = min(input_grid.shape[0], output_grid.shape[0])
+            min_w = min(input_grid.shape[1], output_grid.shape[1])
+        else:
+            min_h, min_w = input_grid.shape
+        
+        for i in range(min_h):
+            for j in range(min_w):
                 in_val = input_grid[i, j]
                 out_val = output_grid[i, j]
                 
@@ -141,7 +161,7 @@ class EmergentRuleSystem:
                 
                 # Analizar si el cambio depende de la posición
                 position_dependent = self._check_position_dependency(
-                    i, j, h, w, in_val, out_val, input_grid, output_grid
+                    i, j, min_h, min_w, in_val, out_val, input_grid, output_grid
                 )
                 
                 if position_dependent:

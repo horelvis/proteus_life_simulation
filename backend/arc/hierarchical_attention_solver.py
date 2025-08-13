@@ -109,7 +109,7 @@ class HierarchicalAttentionSolver:
         
         # PASO 3: Aplicar transformación
         solution = self._apply_transformation(
-            test_input, transformation, analysis
+            test_input, transformation, analysis, train_examples
         )
         
         return solution, steps
@@ -248,11 +248,20 @@ class HierarchicalAttentionSolver:
         
         # ORDEN CRÍTICO: Verificar patrones más específicos primero
         
+        # 0. Cambio de tamaño (más prioritario si las dimensiones cambian)
+        size_change = self._detect_size_change_pattern(input_grid, output_grid)
+        if size_change:
+            patterns.append(size_change)
+            # Si hay cambio de tamaño, analizar dentro del nuevo tamaño
+            if size_change['type'] == 'resize':
+                # Continuar analizando otros patrones en el contexto del resize
+                pass
+        
         # 1. Relleno (más específico que gravedad)
-        if self._is_fill_pattern(input_grid, output_grid):
+        if input_grid.shape == output_grid.shape and self._is_fill_pattern(input_grid, output_grid):
             patterns.append({'type': 'fill', 'confidence': 0.95})
         # 2. Gravedad (solo si no es relleno)
-        elif self._is_gravity_pattern(input_grid, output_grid):
+        elif input_grid.shape == output_grid.shape and self._is_gravity_pattern(input_grid, output_grid):
             patterns.append({'type': 'gravity', 'confidence': 0.90})
         
         # 3. Expansión en cruz
@@ -335,11 +344,15 @@ class HierarchicalAttentionSolver:
     
     def _apply_transformation(self, test_grid: np.ndarray,
                             transformation: Dict,
-                            analysis: Dict) -> np.ndarray:
+                            analysis: Dict,
+                            train_examples: List[Dict] = None) -> np.ndarray:
         """Aplica la transformación detectada"""
         trans_type = transformation['type']
         
-        if trans_type == 'cross_expansion':
+        if trans_type == 'resize':
+            return self._apply_resize(test_grid, transformation, train_examples)
+            
+        elif trans_type == 'cross_expansion':
             return self._apply_cross_expansion(test_grid)
             
         elif trans_type == 'fill':
@@ -352,10 +365,14 @@ class HierarchicalAttentionSolver:
             mapping = transformation.get('mapping', {})
             if mapping:
                 return self.transformations.apply_color_mapping(test_grid, mapping)
-            # Fallback: incrementar valores
-            result = test_grid.copy()
-            result[result != 0] += 1
-            return result
+            
+            # Inferir mapeo dinámicamente de los ejemplos
+            inferred_mapping = self._infer_dynamic_color_mapping(train_examples)
+            if inferred_mapping:
+                return self.transformations.apply_color_mapping(test_grid, inferred_mapping)
+            
+            # Si no se puede inferir, mantener colores originales
+            return test_grid
             
         elif trans_type == 'diagonal_fill':
             return self._apply_diagonal_fill(test_grid)
@@ -367,6 +384,99 @@ class HierarchicalAttentionSolver:
         return test_grid
     
     # === Métodos de detección de patrones ===
+    
+    def _detect_size_change_pattern(self, input_grid: np.ndarray, output_grid: np.ndarray) -> Optional[Dict]:
+        """
+        Detecta cambios de tamaño dinámicamente
+        Ej: 3x3 -> 3x9 (expansión horizontal por factor 3)
+        """
+        in_h, in_w = input_grid.shape
+        out_h, out_w = output_grid.shape
+        
+        if (in_h, in_w) == (out_h, out_w):
+            return None
+        
+        # Calcular factores de escala
+        h_factor = out_h / in_h
+        w_factor = out_w / in_w
+        
+        # Detectar tipo de cambio
+        if h_factor == 1 and w_factor > 1:
+            # Expansión horizontal (ej: 3x3 -> 3x9)
+            # Verificar si es repetición del patrón
+            if w_factor == int(w_factor):
+                factor = int(w_factor)
+                # Verificar si el output repite el input
+                is_repeat = True
+                for i in range(factor):
+                    segment = output_grid[:, i*in_w:(i+1)*in_w]
+                    if not np.array_equal(segment, input_grid):
+                        is_repeat = False
+                        break
+                
+                if is_repeat:
+                    return {
+                        'type': 'resize',
+                        'subtype': 'horizontal_repeat',
+                        'factor': factor,
+                        'confidence': 1.0
+                    }
+                else:
+                    # Puede ser expansión con transformación
+                    return {
+                        'type': 'resize', 
+                        'subtype': 'horizontal_expand',
+                        'factor': factor,
+                        'confidence': 0.9
+                    }
+        
+        elif w_factor == 1 and h_factor > 1:
+            # Expansión vertical
+            if h_factor == int(h_factor):
+                factor = int(h_factor)
+                is_repeat = True
+                for i in range(factor):
+                    segment = output_grid[i*in_h:(i+1)*in_h, :]
+                    if not np.array_equal(segment, input_grid):
+                        is_repeat = False
+                        break
+                
+                if is_repeat:
+                    return {
+                        'type': 'resize',
+                        'subtype': 'vertical_repeat', 
+                        'factor': factor,
+                        'confidence': 1.0
+                    }
+                else:
+                    return {
+                        'type': 'resize',
+                        'subtype': 'vertical_expand',
+                        'factor': factor,
+                        'confidence': 0.9
+                    }
+        
+        elif h_factor > 1 and w_factor > 1:
+            # Expansión en ambas dimensiones
+            return {
+                'type': 'resize',
+                'subtype': 'scale',
+                'h_factor': h_factor,
+                'w_factor': w_factor,
+                'confidence': 0.85
+            }
+        
+        elif h_factor < 1 or w_factor < 1:
+            # Reducción
+            return {
+                'type': 'resize',
+                'subtype': 'shrink',
+                'h_factor': h_factor,
+                'w_factor': w_factor,
+                'confidence': 0.8
+            }
+        
+        return None
     
     def _is_cross_pattern(self, input_grid: np.ndarray, output_grid: np.ndarray) -> bool:
         """Detecta expansión en cruz"""
@@ -519,6 +629,110 @@ class HierarchicalAttentionSolver:
         
         return result
     
+    def _apply_resize(self, grid: np.ndarray, transformation: Dict, train_examples: List[Dict] = None) -> np.ndarray:
+        """
+        Aplica cambio de tamaño dinámicamente aprendido
+        """
+        subtype = transformation.get('subtype', '')
+        
+        if subtype == 'horizontal_repeat':
+            # Repetir horizontalmente
+            factor = transformation.get('factor', 2)
+            return np.tile(grid, (1, factor))
+            
+        elif subtype == 'vertical_repeat':
+            # Repetir verticalmente
+            factor = transformation.get('factor', 2)
+            return np.tile(grid, (factor, 1))
+            
+        elif subtype == 'horizontal_expand':
+            # Expansión horizontal con posible transformación
+            factor = transformation.get('factor', 2)
+            h, w = grid.shape
+            result = np.zeros((h, w * factor), dtype=grid.dtype)
+            
+            # Si hay ejemplos, aprender el patrón de expansión
+            if train_examples:
+                for example in train_examples:
+                    in_grid = np.array(example['input'])
+                    out_grid = np.array(example['output'])
+                    
+                    if out_grid.shape[1] == in_grid.shape[1] * factor:
+                        # Analizar cómo se expande
+                        for i in range(factor):
+                            segment = out_grid[:, i*w:(i+1)*w]
+                            if i == 0:
+                                result[:, :w] = grid
+                            else:
+                                # Aplicar transformación detectada en el segmento
+                                # Por ejemplo, podría ser rotación, espejo, etc.
+                                if np.array_equal(segment, np.fliplr(in_grid)):
+                                    result[:, i*w:(i+1)*w] = np.fliplr(grid)
+                                elif np.array_equal(segment, np.rot90(in_grid)):
+                                    result[:, i*w:(i+1)*w] = np.rot90(grid)
+                                else:
+                                    result[:, i*w:(i+1)*w] = grid
+                        break
+            else:
+                # Sin ejemplos, repetir simplemente
+                result = np.tile(grid, (1, factor))
+            
+            return result
+            
+        elif subtype == 'vertical_expand':
+            # Similar a horizontal pero en vertical
+            factor = transformation.get('factor', 2)
+            h, w = grid.shape
+            result = np.zeros((h * factor, w), dtype=grid.dtype)
+            
+            if train_examples:
+                for example in train_examples:
+                    in_grid = np.array(example['input'])
+                    out_grid = np.array(example['output'])
+                    
+                    if out_grid.shape[0] == in_grid.shape[0] * factor:
+                        for i in range(factor):
+                            segment = out_grid[i*h:(i+1)*h, :]
+                            if i == 0:
+                                result[:h, :] = grid
+                            else:
+                                if np.array_equal(segment, np.flipud(in_grid)):
+                                    result[i*h:(i+1)*h, :] = np.flipud(grid)
+                                elif np.array_equal(segment, np.rot90(in_grid)):
+                                    result[i*h:(i+1)*h, :] = np.rot90(grid)[:h, :w]
+                                else:
+                                    result[i*h:(i+1)*h, :] = grid
+                        break
+            else:
+                result = np.tile(grid, (factor, 1))
+            
+            return result
+            
+        elif subtype == 'scale':
+            # Escalar en ambas dimensiones
+            h_factor = int(transformation.get('h_factor', 2))
+            w_factor = int(transformation.get('w_factor', 2))
+            
+            # Repetir el patrón
+            return np.repeat(np.repeat(grid, h_factor, axis=0), w_factor, axis=1)
+            
+        elif subtype == 'shrink':
+            # Reducir tamaño (submuestreo)
+            h_factor = transformation.get('h_factor', 0.5)
+            w_factor = transformation.get('w_factor', 0.5)
+            
+            new_h = int(grid.shape[0] * h_factor)
+            new_w = int(grid.shape[1] * w_factor)
+            
+            # Submuestrear
+            step_h = max(1, grid.shape[0] // new_h)
+            step_w = max(1, grid.shape[1] // new_w)
+            
+            return grid[::step_h, ::step_w][:new_h, :new_w]
+        
+        # Por defecto, devolver sin cambios
+        return grid
+    
     def _apply_diagonal_fill(self, grid: np.ndarray) -> np.ndarray:
         """Rellena con valor diagonal"""
         h, w = grid.shape
@@ -532,6 +746,78 @@ class HierarchicalAttentionSolver:
             return np.full_like(grid, diagonal_values[0])
         
         return grid
+    
+    def _infer_dynamic_color_mapping(self, train_examples: List[Dict]) -> Optional[Dict]:
+        """
+        Infiere dinámicamente el mapeo de colores de los ejemplos
+        Sin hardcodear incrementos arbitrarios
+        """
+        if not train_examples:
+            return None
+        
+        all_mappings = []
+        
+        for example in train_examples:
+            input_g = np.array(example['input'])
+            output_g = np.array(example['output'])
+            
+            # Solo considerar si tienen la misma forma
+            if input_g.shape != output_g.shape:
+                continue
+            
+            # Detectar mapeo para este ejemplo
+            example_mapping = {}
+            for y in range(input_g.shape[0]):
+                for x in range(input_g.shape[1]):
+                    in_val = int(input_g[y, x])
+                    out_val = int(output_g[y, x])
+                    
+                    if in_val != 0:  # Ignorar fondo
+                        if in_val in example_mapping:
+                            # Verificar consistencia
+                            if example_mapping[in_val] != out_val:
+                                # Mapeo inconsistente en este ejemplo
+                                example_mapping = None
+                                break
+                        else:
+                            example_mapping[in_val] = out_val
+                
+                if example_mapping is None:
+                    break
+            
+            if example_mapping:
+                all_mappings.append(example_mapping)
+        
+        # Si todos los ejemplos tienen el mismo mapeo, usarlo
+        if all_mappings:
+            # Verificar si todos los mapeos son iguales
+            first_mapping = all_mappings[0]
+            if all(m == first_mapping for m in all_mappings):
+                return first_mapping
+            
+            # Si no son iguales, buscar patrón común
+            # Por ejemplo, todos incrementan en la misma cantidad
+            increments = []
+            for mapping in all_mappings:
+                if mapping:
+                    inc_set = set()
+                    for k, v in mapping.items():
+                        if k != 0:
+                            inc_set.add(v - k)
+                    if len(inc_set) == 1:  # Incremento consistente
+                        increments.append(list(inc_set)[0])
+            
+            if increments and all(i == increments[0] for i in increments):
+                # Crear mapeo basado en incremento común
+                increment = increments[0]
+                dynamic_mapping = {}
+                for val in range(1, 10):  # Colores ARC típicos
+                    new_val = val + increment
+                    if 0 <= new_val <= 9:  # Mantener en rango válido
+                        dynamic_mapping[val] = new_val
+                return dynamic_mapping
+        
+        return None
     
     def _find_consistent_pattern(self, train_examples: List[Dict]) -> Optional[str]:
         """Encuentra patrón consistente en múltiples ejemplos"""

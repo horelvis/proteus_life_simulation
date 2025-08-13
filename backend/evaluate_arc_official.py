@@ -185,13 +185,19 @@ def main():
     results.append(hams_results)
     
     # 3. Sistema Deep Learning (si está disponible)
-    if DL_AVAILABLE:
+    if DL_AVAILABLE and DeepLearningARCSolver is not None:
         print("\n" + "="*80)
         print("3️⃣ SISTEMA DEEP LEARNING (A-MHA con CNN)")
         print("="*80)
-        dl_solver = DeepLearningARCSolver(device='cpu')
-        dl_results = evaluator.evaluate_solver(dl_solver, "Deep Learning")
-        results.append(dl_results)
+        try:
+            dl_solver = DeepLearningARCSolver(device='cpu')
+            dl_results = evaluator.evaluate_solver(dl_solver, "Deep Learning")
+            results.append(dl_results)
+        except Exception as e:
+            print(f"⚠️ No se pudo inicializar DeepLearningARCSolver: {e}")
+            print("   Continuando sin Deep Learning...")
+    else:
+        print("\n⚠️ Deep Learning no disponible (PyTorch no instalado)")
     
     # Mostrar comparación
     print_comparison(results)

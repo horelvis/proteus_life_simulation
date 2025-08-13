@@ -28,12 +28,11 @@ check_docker() {
 show_menu() {
     echo ""
     echo "Choose deployment option:"
-    echo "1) Full stack (Frontend + Backend)"
-    echo "2) Backend only (GPU/Vispy)"
-    echo "3) Frontend only"
-    echo "4) Stop all services"
-    echo "5) View logs"
-    echo "6) Clean up (remove containers and images)"
+    echo "1) Start backend container"
+    echo "2) Stop backend"
+    echo "3) View backend logs"
+    echo "4) Restart backend"
+    echo "5) Clean up (remove containers and images)"
     echo "0) Exit"
     echo ""
 }
@@ -48,45 +47,30 @@ while true; do
     
     case $choice in
         1)
-            echo -e "${BLUE}Starting full stack...${NC}"
-            docker compose up -d proteus-backend proteus-frontend
-            echo -e "${GREEN}✓ Full stack started!${NC}"
-            echo "Frontend: http://localhost:3000"
-            echo "Backend: http://localhost:8000"
-            echo "WebSocket: ws://localhost:8000/ws/{client_id}"
+            echo -e "${BLUE}Starting backend container...${NC}"
+            docker compose up -d backend
+            echo -e "${GREEN}✓ Backend started!${NC}"
+            echo "Backend API: http://localhost:8000"
+            echo "ARC WebSocket: ws://localhost:8765"
+            echo ""
+            echo -e "${BLUE}Para iniciar el frontend, ejecuta en otra terminal:${NC}"
+            echo "cd frontend && npm install && npm start"
             ;;
         2)
-            echo -e "${BLUE}Starting backend only...${NC}"
-            docker compose up -d proteus-backend
-            echo -e "${GREEN}✓ Backend started!${NC}"
-            echo "Backend: http://localhost:8000"
+            echo -e "${BLUE}Stopping backend...${NC}"
+            docker compose down
+            echo -e "${GREEN}✓ Backend stopped!${NC}"
             ;;
         3)
-            echo -e "${BLUE}Starting frontend only...${NC}"
-            docker compose up -d proteus-frontend
-            echo -e "${GREEN}✓ Frontend started!${NC}"
-            echo "Frontend: http://localhost:3000"
+            echo -e "${BLUE}Showing backend logs...${NC}"
+            docker compose logs -f backend
             ;;
         4)
-            echo -e "${BLUE}Stopping all services...${NC}"
-            docker compose down
-            echo -e "${GREEN}✓ All services stopped!${NC}"
+            echo -e "${BLUE}Restarting backend...${NC}"
+            docker compose restart backend
+            echo -e "${GREEN}✓ Backend restarted!${NC}"
             ;;
         5)
-            echo "View logs for which service?"
-            echo "1) Backend"
-            echo "2) Frontend"
-            echo "3) All"
-            read -p "Enter choice: " log_choice
-            
-            case $log_choice in
-                1) docker compose logs -f proteus-backend ;;
-                2) docker compose logs -f proteus-frontend ;;
-                3) docker compose logs -f ;;
-                *) echo -e "${RED}Invalid choice${NC}" ;;
-            esac
-            ;;
-        6)
             echo -e "${RED}This will remove all PROTEUS containers and images${NC}"
             read -p "Are you sure? (y/N): " confirm
             if [[ $confirm == [yY] ]]; then

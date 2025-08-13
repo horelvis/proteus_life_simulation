@@ -1,0 +1,54 @@
+# Docker Compose Unificado - PROTEUS ARC
+# Backend único con todos los servicios integrados
+# Frontend se ejecuta de forma separada (npm run dev)
+
+version: '3.8'
+
+services:
+  backend:
+    image: proteus-backend-gpu:latest
+    container_name: proteus-backend
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"     # FastAPI
+      - "${WEBSOCKET_PORT:-8765}:8765"   # WebSocket ARC
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+      - DISPLAY=:99
+      # CORS para desarrollo local
+      - CORS_ORIGINS=${CORS_ORIGINS:-["*"]}
+      # Variables ARC API si se necesitan
+      - SCHEME=${SCHEME:-https}
+      - HOST=${HOST:-three.arcprize.org}
+      - PORT=${PORT:-443}
+      - ARC_API_KEY=${ARC_API_KEY}
+      # GPU support (opcional)
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      # Montar código para desarrollo con hot reload
+      - ./backend/proteus:/app/proteus
+      - ./backend/app:/app/app
+      - ./backend/arc:/app/arc
+      - ./backend:/app
+      # Cache de ARC oficial
+      - ./backend/arc_official_cache:/app/arc_official_cache
+      # Archivos de configuración
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+    # GPU support con Docker Compose (requiere nvidia-docker)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - proteus-network
+
+networks:
+  proteus-network:
+    driver: bridge
+    name: proteus-net

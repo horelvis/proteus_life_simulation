@@ -126,29 +126,15 @@ class ARCOfficialLoader:
         Returns:
             Puzzle procesado
         """
+        # Mantener el formato original de ARC (train/test)
         processed = {
             'id': puzzle_id,
-            'trainExamples': [],
-            'testExample': None,
+            'train': raw_data.get('train', []),
+            'test': raw_data.get('test', []),
             'category': 'unknown',  # ARC no proporciona categorías
             'difficulty': 'unknown',
             'source': 'arc_official'
         }
-        
-        # Procesar ejemplos de entrenamiento
-        for train_pair in raw_data.get('train', []):
-            processed['trainExamples'].append({
-                'input': train_pair['input'],
-                'output': train_pair['output']
-            })
-        
-        # Procesar ejemplo de test (usualmente solo hay uno)
-        test_pairs = raw_data.get('test', [])
-        if test_pairs:
-            processed['testExample'] = {
-                'input': test_pairs[0]['input'],
-                'output': test_pairs[0]['output']
-            }
         
         return processed
     
@@ -164,14 +150,14 @@ class ARCOfficialLoader:
         """
         analysis = {
             'id': puzzle['id'],
-            'num_train_examples': len(puzzle['trainExamples']),
+            'num_train_examples': len(puzzle.get('train', [])),
             'grid_sizes': [],
             'unique_colors': set(),
             'complexity_score': 0
         }
         
         # Analizar tamaños de grilla
-        all_examples = puzzle['trainExamples'] + ([puzzle['testExample']] if puzzle['testExample'] else [])
+        all_examples = puzzle.get('train', []) + puzzle.get('test', [])
         
         for example in all_examples:
             input_grid = np.array(example['input'])
@@ -230,10 +216,10 @@ class ARCOfficialLoader:
         Returns:
             Métricas de evaluación
         """
-        if not puzzle.get('testExample'):
+        if not puzzle.get('test') or not puzzle['test']:
             return {'error': 'No test example available'}
         
-        expected = np.array(puzzle['testExample']['output'])
+        expected = np.array(puzzle['test'][0]['output'])
         predicted = np.array(predicted)
         
         # Verificar dimensiones

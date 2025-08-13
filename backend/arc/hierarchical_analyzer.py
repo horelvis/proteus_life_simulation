@@ -530,33 +530,320 @@ class HierarchicalAnalyzer:
     
     def _find_object_clusters(self, objects: List[ObjectLevel], relations: List[RelationLevel]) -> List[List[int]]:
         """Encuentra clusters de objetos relacionados"""
-        # Implementar clustering basado en relaciones
-        return []
+        if not objects:
+            return []
+        
+        # Crear grafo de adyacencia basado en relaciones
+        adjacency = defaultdict(set)
+        for rel in relations:
+            if rel.relation_type in ['adjacent', 'aligned', 'contains']:
+                adjacency[rel.object1_id].add(rel.object2_id)
+                adjacency[rel.object2_id].add(rel.object1_id)
+        
+        # Encontrar componentes conectados
+        visited = set()
+        clusters = []
+        
+        for obj in objects:
+            if obj.id not in visited:
+                # BFS para encontrar cluster
+                cluster = []
+                queue = [obj.id]
+                
+                while queue:
+                    current = queue.pop(0)
+                    if current not in visited:
+                        visited.add(current)
+                        cluster.append(current)
+                        queue.extend(adjacency[current] - visited)
+                
+                if cluster:
+                    clusters.append(cluster)
+        
+        return clusters
     
     def _detect_grid_pattern(self, objects: List[ObjectLevel]) -> Optional[PatternLevel]:
         """Detecta patrones de rejilla"""
-        # Implementar detección de grid
+        if len(objects) < 4:
+            return None
+        
+        # Extraer centroides
+        centroids = np.array([obj.centroid for obj in objects])
+        
+        # Verificar alineación en filas y columnas
+        y_coords = centroids[:, 0]
+        x_coords = centroids[:, 1]
+        
+        # Encontrar valores únicos con tolerancia
+        y_unique = np.unique(np.round(y_coords, 1))
+        x_unique = np.unique(np.round(x_coords, 1))
+        
+        # Verificar si forma una rejilla regular
+        if len(y_unique) > 1 and len(x_unique) > 1:
+            # Calcular espaciado
+            y_spacing = np.diff(sorted(y_unique))
+            x_spacing = np.diff(sorted(x_unique))
+            
+            # Verificar regularidad
+            y_regular = np.std(y_spacing) < 0.5 if len(y_spacing) > 0 else False
+            x_regular = np.std(x_spacing) < 0.5 if len(x_spacing) > 0 else False
+            
+            if y_regular and x_regular:
+                regularity = 1.0 - (np.std(y_spacing) + np.std(x_spacing)) / 2
+                return PatternLevel(
+                    pattern_type='grid',
+                    objects_involved=[obj.id for obj in objects],
+                    regularity_score=float(regularity),
+                    transformation=None,
+                    parameters={
+                        'rows': len(y_unique),
+                        'cols': len(x_unique),
+                        'y_spacing': float(np.mean(y_spacing)) if len(y_spacing) > 0 else 0,
+                        'x_spacing': float(np.mean(x_spacing)) if len(x_spacing) > 0 else 0
+                    }
+                )
+        
         return None
     
     def _detect_symmetry_patterns(self, objects: List[ObjectLevel]) -> List[PatternLevel]:
         """Detecta patrones de simetría"""
-        # Implementar detección de simetría
-        return []
+        patterns = []
+        if len(objects) < 2:
+            return patterns
+        
+        # Calcular centro de masa global
+        all_positions = []
+        for obj in objects:
+            all_positions.extend(obj.pixels)
+        
+        if not all_positions:
+            return patterns
+        
+        center = np.mean(all_positions, axis=0)
+        
+        # Verificar simetría horizontal
+        h_symmetric = True
+        for obj in objects:
+            mirrored_y = 2 * center[0] - obj.centroid[0]
+            mirrored_x = obj.centroid[1]
+            
+            # Buscar objeto espejo
+            found_mirror = False
+            for other in objects:
+                if other.id != obj.id:
+                    dist = np.sqrt((other.centroid[0] - mirrored_y)**2 + 
+                                  (other.centroid[1] - mirrored_x)**2)
+                    if dist < 1.5 and other.color == obj.color:
+                        found_mirror = True
+                        break
+            
+            if not found_mirror:
+                h_symmetric = False
+                break
+        
+        if h_symmetric:
+            patterns.append(PatternLevel(
+                pattern_type='symmetry',
+                objects_involved=[obj.id for obj in objects],
+                regularity_score=0.9,
+                transformation='horizontal_reflection',
+                parameters={'axis': float(center[0])}
+            ))
+        
+        # Verificar simetría vertical
+        v_symmetric = True
+        for obj in objects:
+            mirrored_y = obj.centroid[0]
+            mirrored_x = 2 * center[1] - obj.centroid[1]
+            
+            # Buscar objeto espejo
+            found_mirror = False
+            for other in objects:
+                if other.id != obj.id:
+                    dist = np.sqrt((other.centroid[0] - mirrored_y)**2 + 
+                                  (other.centroid[1] - mirrored_x)**2)
+                    if dist < 1.5 and other.color == obj.color:
+                        found_mirror = True
+                        break
+            
+            if not found_mirror:
+                v_symmetric = False
+                break
+        
+        if v_symmetric:
+            patterns.append(PatternLevel(
+                pattern_type='symmetry',
+                objects_involved=[obj.id for obj in objects],
+                regularity_score=0.9,
+                transformation='vertical_reflection',
+                parameters={'axis': float(center[1])}
+            ))
+        
+        return patterns
     
     def _detect_repetition_patterns(self, objects: List[ObjectLevel]) -> List[PatternLevel]:
         """Detecta patrones de repetición"""
-        # Implementar detección de repetición
-        return []
+        patterns = []
+        if len(objects) < 2:
+            return patterns
+        
+        # Agrupar objetos por forma y color
+        shape_groups = defaultdict(list)
+        for obj in objects:
+            key = (obj.color, obj.area, obj.shape_type)
+            shape_groups[key].append(obj)
+        
+        # Buscar grupos con múltiples instancias
+        for key, group in shape_groups.items():
+            if len(group) >= 2:
+                # Calcular distancias entre objetos del grupo
+                positions = np.array([obj.centroid for obj in group])
+                
+                if len(positions) >= 2:
+                    # Calcular todas las distancias por pares
+                    distances = cdist(positions, positions)
+                    
+                    # Excluir diagonal (distancia a sí mismo)
+                    mask = ~np.eye(len(positions), dtype=bool)
+                    valid_distances = distances[mask]
+                    
+                    if len(valid_distances) > 0:
+                        # Verificar si hay distancias regulares
+                        mean_dist = np.mean(valid_distances)
+                        std_dist = np.std(valid_distances)
+                        
+                        # Si la desviación es baja, hay repetición regular
+                        if mean_dist > 0 and std_dist / mean_dist < 0.3:
+                            regularity = 1.0 - (std_dist / mean_dist)
+                            patterns.append(PatternLevel(
+                                pattern_type='repetition',
+                                objects_involved=[obj.id for obj in group],
+                                regularity_score=float(regularity),
+                                transformation='translation',
+                                parameters={
+                                    'count': len(group),
+                                    'mean_distance': float(mean_dist),
+                                    'color': key[0],
+                                    'area': key[1]
+                                }
+                            ))
+        
+        return patterns
     
     def _detect_progression_patterns(self, objects: List[ObjectLevel]) -> List[PatternLevel]:
         """Detecta patrones de progresión"""
-        # Implementar detección de progresión
-        return []
+        patterns = []
+        if len(objects) < 3:
+            return patterns
+        
+        # Verificar progresión por tamaño
+        objects_sorted = sorted(objects, key=lambda o: o.centroid[0])  # Ordenar por posición Y
+        areas = [obj.area for obj in objects_sorted]
+        
+        if len(areas) >= 3:
+            # Verificar si las áreas forman una progresión
+            diffs = np.diff(areas)
+            
+            # Progresión aritmética
+            if len(diffs) > 0 and np.std(diffs) < 0.5:
+                patterns.append(PatternLevel(
+                    pattern_type='progression',
+                    objects_involved=[obj.id for obj in objects_sorted],
+                    regularity_score=0.8,
+                    transformation='size_progression',
+                    parameters={
+                        'type': 'arithmetic',
+                        'step': float(np.mean(diffs)),
+                        'start_size': float(areas[0])
+                    }
+                ))
+            
+            # Progresión geométrica
+            elif len(areas) >= 2 and all(a > 0 for a in areas):
+                ratios = [areas[i+1] / areas[i] for i in range(len(areas)-1)]
+                if np.std(ratios) < 0.1:
+                    patterns.append(PatternLevel(
+                        pattern_type='progression',
+                        objects_involved=[obj.id for obj in objects_sorted],
+                        regularity_score=0.8,
+                        transformation='size_progression',
+                        parameters={
+                            'type': 'geometric',
+                            'ratio': float(np.mean(ratios)),
+                            'start_size': float(areas[0])
+                        }
+                    ))
+        
+        # Verificar progresión por color
+        colors = [obj.color for obj in objects_sorted]
+        if len(set(colors)) == len(colors):  # Todos colores diferentes
+            color_diffs = np.diff(colors)
+            if len(color_diffs) > 0 and np.std(color_diffs) < 0.5:
+                patterns.append(PatternLevel(
+                    pattern_type='progression',
+                    objects_involved=[obj.id for obj in objects_sorted],
+                    regularity_score=0.7,
+                    transformation='color_progression',
+                    parameters={
+                        'step': float(np.mean(color_diffs)),
+                        'start_color': colors[0]
+                    }
+                ))
+        
+        return patterns
     
     def _detect_transformation_patterns(self, objects: List[ObjectLevel], relations: List[RelationLevel]) -> List[PatternLevel]:
         """Detecta patrones de transformación"""
-        # Implementar detección de transformaciones
-        return []
+        patterns = []
+        if len(objects) < 2:
+            return patterns
+        
+        # Agrupar objetos por color
+        color_groups = defaultdict(list)
+        for obj in objects:
+            color_groups[obj.color].append(obj)
+        
+        # Buscar rotaciones
+        for color, group in color_groups.items():
+            if len(group) >= 2:
+                # Comparar formas para detectar rotaciones
+                base_obj = group[0]
+                for obj in group[1:]:
+                    if obj.area == base_obj.area:
+                        # Verificar si es una rotación
+                        angle_diff = abs(obj.orientation - base_obj.orientation)
+                        if angle_diff > 0 and (angle_diff % 90 < 5 or angle_diff % 90 > 85):
+                            patterns.append(PatternLevel(
+                                pattern_type='transformation',
+                                objects_involved=[base_obj.id, obj.id],
+                                regularity_score=0.85,
+                                transformation='rotation',
+                                parameters={
+                                    'angle': float(angle_diff),
+                                    'center': list(base_obj.centroid)
+                                }
+                            ))
+        
+        # Buscar escalado
+        for rel in relations:
+            if rel.size_ratio != 1.0:
+                # Verificar si mantienen la misma forma pero diferente tamaño
+                obj1 = next((o for o in objects if o.id == rel.object1_id), None)
+                obj2 = next((o for o in objects if o.id == rel.object2_id), None)
+                
+                if obj1 and obj2 and obj1.shape_type == obj2.shape_type:
+                    patterns.append(PatternLevel(
+                        pattern_type='transformation',
+                        objects_involved=[rel.object1_id, rel.object2_id],
+                        regularity_score=0.8,
+                        transformation='scaling',
+                        parameters={
+                            'scale_factor': float(rel.size_ratio),
+                            'center': list(obj1.centroid)
+                        }
+                    ))
+        
+        return patterns
     
     def _get_dominant_pattern(self, patterns: List[PatternLevel]) -> Optional[PatternLevel]:
         """Obtiene el patrón dominante"""
@@ -582,31 +869,262 @@ class HierarchicalAnalyzer:
     
     def _link_pixels_to_objects(self, pixel_level: Dict, object_level: Dict) -> Dict:
         """Vincula información de píxeles con objetos"""
-        return {}
+        links = {
+            'pixel_to_object_map': {},
+            'object_pixel_stats': {},
+            'boundary_pixels': {},
+            'interior_pixels': {}
+        }
+        
+        # Crear un mapa de posición a píxel para búsqueda rápida
+        pixel_map = {}
+        for pixel in pixel_level.get('pixels', []):
+            pixel_map[pixel.position] = pixel
+        
+        # Mapear cada píxel a su objeto
+        for obj in object_level.get('objects', []):
+            obj_pixels = set(map(tuple, obj.pixels))
+            boundary = []
+            interior = []
+            
+            for px_pos in obj.pixels:
+                px_key = tuple(px_pos)
+                links['pixel_to_object_map'][px_key] = obj.id
+                
+                # Determinar si es borde o interior
+                px_info = pixel_map.get(px_key)
+                if px_info and px_info.local_pattern in ['edge', 'corner']:
+                    boundary.append(px_key)
+                else:
+                    interior.append(px_key)
+            
+            links['boundary_pixels'][obj.id] = boundary
+            links['interior_pixels'][obj.id] = interior
+            
+            # Estadísticas de píxeles por objeto
+            links['object_pixel_stats'][obj.id] = {
+                'total_pixels': len(obj.pixels),
+                'boundary_count': len(boundary),
+                'interior_count': len(interior),
+                'boundary_ratio': len(boundary) / max(len(obj.pixels), 1)
+            }
+        
+        return links
     
     def _link_objects_to_relations(self, object_level: Dict, relation_level: Dict) -> Dict:
         """Vincula objetos con sus relaciones"""
-        return {}
+        links = {
+            'object_relations': defaultdict(list),
+            'relation_counts': {},
+            'relation_types_per_object': defaultdict(set),
+            'strongly_connected': []
+        }
+        
+        # Indexar relaciones por objeto
+        for rel in relation_level.get('relations', []):
+            links['object_relations'][rel.object1_id].append(rel)
+            links['object_relations'][rel.object2_id].append(rel)
+            
+            links['relation_types_per_object'][rel.object1_id].add(rel.relation_type)
+            links['relation_types_per_object'][rel.object2_id].add(rel.relation_type)
+        
+        # Contar relaciones por objeto
+        for obj in object_level.get('objects', []):
+            obj_relations = links['object_relations'][obj.id]
+            links['relation_counts'][obj.id] = len(obj_relations)
+            
+            # Identificar objetos fuertemente conectados (>3 relaciones)
+            if len(obj_relations) > 3:
+                links['strongly_connected'].append(obj.id)
+        
+        return links
     
     def _link_relations_to_patterns(self, relation_level: Dict, pattern_level: Dict) -> Dict:
         """Vincula relaciones con patrones"""
-        return {}
+        links = {
+            'pattern_supporting_relations': defaultdict(list),
+            'relation_pattern_participation': defaultdict(list),
+            'critical_relations': []
+        }
+        
+        # Para cada patrón, identificar relaciones que lo soportan
+        for pattern in pattern_level.get('patterns', []):
+            pattern_objects = set(pattern.objects_involved)
+            
+            for rel in relation_level.get('relations', []):
+                # Si ambos objetos están en el patrón
+                if rel.object1_id in pattern_objects and rel.object2_id in pattern_objects:
+                    links['pattern_supporting_relations'][pattern.pattern_type].append(rel)
+                    links['relation_pattern_participation'][(
+                        rel.object1_id, rel.object2_id
+                    )].append(pattern.pattern_type)
+                    
+                    # Relaciones críticas para patrones de alta regularidad
+                    if pattern.regularity_score > 0.8:
+                        links['critical_relations'].append(rel)
+        
+        return links
     
     def _check_local_global_consistency(self, pixel_level: Dict, pattern_level: Dict) -> float:
         """Verifica consistencia entre niveles local y global"""
-        return 0.0
+        if not pixel_level or not pattern_level:
+            return 0.0
+        
+        consistency_scores = []
+        
+        # Obtener posiciones de píxeles
+        pixel_positions = [p.position for p in pixel_level.get('pixels', [])]
+        
+        # Verificar que los patrones globales se reflejan en características locales
+        for pattern in pattern_level.get('patterns', []):
+            if pattern.pattern_type == 'symmetry':
+                # Verificar simetría en distribución de píxeles
+                axis = pattern.parameters.get('axis', 0)
+                
+                if pixel_positions:
+                    # Contar píxeles a cada lado del eje
+                    left_count = sum(1 for pos in pixel_positions if pos[0] < axis)
+                    right_count = sum(1 for pos in pixel_positions if pos[0] > axis)
+                    
+                    if left_count + right_count > 0:
+                        balance = 1.0 - abs(left_count - right_count) / (left_count + right_count)
+                        consistency_scores.append(balance)
+            
+            elif pattern.pattern_type == 'grid':
+                # Verificar regularidad en distribución de píxeles
+                spacing = pattern.parameters.get('y_spacing', 1)
+                if spacing > 0:
+                    regularity = pattern.regularity_score
+                    consistency_scores.append(regularity)
+        
+        return float(np.mean(consistency_scores)) if consistency_scores else 0.0
     
     def _hierarchical_decomposition(self, object_level: Dict, relation_level: Dict) -> Dict:
         """Descomposición jerárquica de la estructura"""
-        return {}
+        decomposition = {
+            'hierarchy_levels': [],
+            'parent_child_relations': defaultdict(list),
+            'hierarchy_depth': 0
+        }
+        
+        objects = object_level.get('objects', [])
+        if not objects:
+            return decomposition
+        
+        # Nivel 0: Objetos individuales
+        level_0 = [{'id': obj.id, 'type': 'atomic', 'size': obj.area} for obj in objects]
+        decomposition['hierarchy_levels'].append(level_0)
+        
+        # Nivel 1: Grupos basados en proximidad
+        clusters = self._find_object_clusters(objects, relation_level.get('relations', []))
+        if clusters:
+            level_1 = []
+            for i, cluster in enumerate(clusters):
+                cluster_id = f"cluster_{i}"
+                level_1.append({
+                    'id': cluster_id,
+                    'type': 'cluster',
+                    'members': cluster,
+                    'size': len(cluster)
+                })
+                
+                # Establecer relaciones padre-hijo
+                for obj_id in cluster:
+                    decomposition['parent_child_relations'][cluster_id].append(obj_id)
+            
+            decomposition['hierarchy_levels'].append(level_1)
+            decomposition['hierarchy_depth'] = len(decomposition['hierarchy_levels'])
+        
+        return decomposition
     
     def _find_emergent_properties(self, pixel_level: Dict, object_level: Dict, pattern_level: Dict) -> List[str]:
         """Encuentra propiedades emergentes"""
-        return []
+        properties = []
+        
+        # Propiedad emergente: Formación de estructura compleja desde elementos simples
+        num_pixels = len(pixel_level.get('pixels', {}))
+        num_objects = len(object_level.get('objects', []))
+        num_patterns = len(pattern_level.get('patterns', []))
+        
+        if num_pixels > 0 and num_objects > 0:
+            complexity_ratio = num_objects / num_pixels
+            if complexity_ratio < 0.2:
+                properties.append('sparse_structure')
+            elif complexity_ratio > 0.8:
+                properties.append('dense_structure')
+        
+        # Propiedad emergente: Auto-organización
+        if num_patterns > 0:
+            max_regularity = max(p.regularity_score for p in pattern_level.get('patterns', []))
+            if max_regularity > 0.9:
+                properties.append('highly_organized')
+            elif max_regularity > 0.7:
+                properties.append('moderately_organized')
+        
+        # Propiedad emergente: Modularidad
+        if object_level.get('objects'):
+            unique_shapes = len(set(obj.shape_type for obj in object_level['objects']))
+            if unique_shapes == 1:
+                properties.append('homogeneous_modules')
+            elif unique_shapes > 3:
+                properties.append('heterogeneous_modules')
+        
+        # Propiedad emergente: Jerarquía
+        if 'symmetry' in [p.pattern_type for p in pattern_level.get('patterns', [])]:
+            properties.append('symmetrical_hierarchy')
+        
+        if 'grid' in [p.pattern_type for p in pattern_level.get('patterns', [])]:
+            properties.append('regular_lattice')
+        
+        return properties
     
     def _extract_scale_invariant_features(self, *levels) -> Dict:
         """Extrae características invariantes a la escala"""
-        return {}
+        features = {
+            'density': 0.0,
+            'connectivity': 0.0,
+            'regularity': 0.0,
+            'complexity': 0.0,
+            'symmetry_score': 0.0
+        }
+        
+        # Extraer de todos los niveles pasados
+        for level in levels:
+            if isinstance(level, dict):
+                # Densidad: proporción de espacio ocupado
+                if 'pixels' in level:
+                    total_pixels = len(level['pixels'])
+                    if 'bounds' in level:
+                        area = level['bounds']['width'] * level['bounds']['height']
+                        features['density'] = total_pixels / max(area, 1)
+                
+                # Conectividad: promedio de conexiones por objeto
+                if 'relations' in level:
+                    num_relations = len(level['relations'])
+                    num_objects = len(level.get('objects', [1]))
+                    features['connectivity'] = num_relations / max(num_objects, 1)
+                
+                # Regularidad: de los patrones detectados
+                if 'patterns' in level:
+                    regularities = [p.regularity_score for p in level['patterns']]
+                    if regularities:
+                        features['regularity'] = float(np.mean(regularities))
+                
+                # Complejidad: diversidad de elementos
+                if 'objects' in level:
+                    unique_colors = len(set(obj.color for obj in level['objects']))
+                    unique_shapes = len(set(obj.shape_type for obj in level['objects']))
+                    features['complexity'] = (unique_colors + unique_shapes) / 2.0
+                
+                # Simetría
+                if 'patterns' in level:
+                    symmetry_patterns = [p for p in level['patterns'] 
+                                       if p.pattern_type == 'symmetry']
+                    if symmetry_patterns:
+                        features['symmetry_score'] = max(p.regularity_score 
+                                                        for p in symmetry_patterns)
+        
+        return features
     
     # Métodos auxiliares adicionales
     

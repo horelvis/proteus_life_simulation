@@ -3,7 +3,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ARCWebSocketClient } from '../services/ARCWebSocketClient';
+import arcWebSocketService from '../services/arcWebSocketService';
 import { ARCPuzzleVisualization } from './ARCPuzzleVisualization';
 import { ARCReasoningDisplay } from './ARCReasoningDisplay';
 import { ARCBenchmarkDisplay } from './ARCBenchmarkDisplay';
@@ -31,126 +31,140 @@ export const ARCExperimentPythonPanel = () => {
   const wsClient = useRef(null);
 
   useEffect(() => {
-    // Inicializar cliente WebSocket
-    wsClient.current = new ARCWebSocketClient();
-    
-    // Registrar manejadores de eventos
-    wsClient.current.on('connection', (msg) => {
-      console.log('Conectado:', msg);
-      setConectado(true);
-    });
-
-    wsClient.current.on('loading', (msg) => {
-      console.log('Cargando:', msg.message);
-      setCargandoPuzzles(true);
-    });
-
-    wsClient.current.on('puzzles_loaded', (msg) => {
-      console.log('Puzzles cargados:', msg.count);
-      console.log('Estructura de puzzles:', msg.puzzles);
-      if (msg.puzzles && msg.puzzles.length > 0) {
-        console.log('Primer puzzle:', msg.puzzles[0]);
-        console.log('Train del primer puzzle:', msg.puzzles[0].train);
-      }
-      setPuzzles(msg.puzzles);
-      setEstadisticas(prev => ({ ...prev, totalPuzzles: msg.count }));
-      if (msg.benchmarks) {
-        setBenchmarks(msg.benchmarks);
-      }
-      setCargandoPuzzles(false);
-    });
-
-    wsClient.current.on('solving_start', (msg) => {
-      console.log('Iniciando resolución:', msg.puzzle_id);
-      setCargando(true);
-    });
-
-    wsClient.current.on('analyzing_example', (msg) => {
-      console.log('Analizando ejemplo:', msg.example_index);
-      // Actualizar UI con progreso
-    });
-
-    wsClient.current.on('rule_detected', (msg) => {
-      console.log('Regla detectada:', msg.rule);
-      setPasosRazonamiento(prev => [...prev, {
-        tipo: 'deteccion_regla',
-        titulo: `Regla detectada: ${msg.rule.type}`,
-        descripcion: `Confianza: ${(msg.rule.confidence * 100).toFixed(1)}%`,
-        datos: msg.rule
-      }]);
-    });
-
-    wsClient.current.on('reasoning_step', (msg) => {
-      console.log('Paso de razonamiento:', msg.step);
-      setPasosRazonamiento(prev => [...prev, msg.step]);
-    });
-
-    wsClient.current.on('solving_complete', (msg) => {
-      console.log('Resolución completa:', msg);
-      setCargando(false);
-      
-      // Actualizar resultados
-      setResultados(prev => ({
-        ...prev,
-        [msg.puzzle_id]: {
-          correcto: msg.is_correct,
-          solucion: msg.solution,
-          esperado: msg.expected,
-          confianza: msg.confidence,
-          pasos: msg.reasoning_steps
+    // Obtener cliente WebSocket del servicio singleton
+    const setupWebSocket = async () => {
+      try {
+        const client = await arcWebSocketService.getConnection();
+        wsClient.current = client;
+        
+        // Verificar si ya está conectado
+        if (arcWebSocketService.isConnected()) {
+          setConectado(true);
         }
-      }));
+        
+        // Registrar manejadores de eventos
+        client.on('connected', () => {
+          setConectado(true);
+          console.log('✅ Conectado al backend Python');
+        });
+        
+        client.on('disconnected', () => {
+          setConectado(false);
+          console.log('❌ Desconectado del backend Python');
+        });
 
-      // Actualizar estadísticas
-      if (msg.is_correct) {
-        setEstadisticas(prev => ({
-          ...prev,
-          resueltos: prev.resueltos + 1,
-          porcentajeExito: ((prev.resueltos + 1) / prev.totalPuzzles) * 100
-        }));
-      }
-    });
+        client.on('loading', (msg) => {
+          console.log('Cargando:', msg.message);
+          setCargandoPuzzles(true);
+        });
 
-    wsClient.current.on('integrity_check_complete', (msg) => {
-      console.log('Verificación de integridad:', msg);
-      alert(`Integridad verificada: ${msg.passed ? '✅ PASÓ' : '❌ FALLÓ'}`);
-    });
+        client.on('puzzles_loaded', (msg) => {
+          console.log('Puzzles cargados:', msg.count);
+          console.log('Estructura de puzzles:', msg.puzzles);
+          if (msg.puzzles && msg.puzzles.length > 0) {
+            console.log('Primer puzzle:', msg.puzzles[0]);
+            console.log('Train del primer puzzle:', msg.puzzles[0].train);
+          }
+          setPuzzles(msg.puzzles);
+          setEstadisticas(prev => ({ ...prev, totalPuzzles: msg.count }));
+          if (msg.benchmarks) {
+            setBenchmarks(msg.benchmarks);
+          }
+          setCargandoPuzzles(false);
+        });
 
-    wsClient.current.on('export_ready', (msg) => {
-      console.log('Exportación lista:', msg.format);
-      // Descargar archivo
-      const link = document.createElement('a');
-      link.href = `data:image/${msg.format};base64,${msg.data}`;
-      link.download = `arc-${msg.puzzle_id}.${msg.format}`;
-      link.click();
-    });
+        client.on('solving_start', (msg) => {
+          console.log('Iniciando resolución:', msg.puzzle_id);
+          setCargando(true);
+        });
 
-    wsClient.current.on('error', (msg) => {
-      console.error('Error del servidor:', msg.message);
-      setCargandoPuzzles(false);
-      setCargando(false);
-      alert(`Error: ${msg.message}`);
-    });
+        client.on('analyzing_example', (msg) => {
+          console.log('Analizando ejemplo:', msg.example_index);
+          // Actualizar UI con progreso
+        });
 
-    // Conectar al servidor
-    conectar();
+        client.on('rule_detected', (msg) => {
+          console.log('Regla detectada:', msg.rule);
+          setPasosRazonamiento(prev => [...prev, {
+            tipo: 'deteccion_regla',
+            titulo: `Regla detectada: ${msg.rule.type}`,
+            descripcion: `Confianza: ${(msg.rule.confidence * 100).toFixed(1)}%`,
+            datos: msg.rule
+          }]);
+        });
 
-    return () => {
-      if (wsClient.current) {
-        wsClient.current.disconnect();
+        client.on('reasoning_step', (msg) => {
+          console.log('Paso de razonamiento:', msg.step);
+          setPasosRazonamiento(prev => [...prev, msg.step]);
+        });
+
+        client.on('solving_complete', (msg) => {
+          console.log('Resolución completa:', msg);
+          setCargando(false);
+          
+          // Actualizar resultados
+          setResultados(prev => ({
+            ...prev,
+            [msg.puzzle_id]: {
+              correcto: msg.is_correct,
+              solucion: msg.solution,
+              esperado: msg.expected,
+              confianza: msg.confidence,
+              pasos: msg.reasoning_steps
+            }
+          }));
+
+          // Actualizar estadísticas
+          if (msg.is_correct) {
+            setEstadisticas(prev => ({
+              ...prev,
+              resueltos: prev.resueltos + 1,
+              porcentajeExito: ((prev.resueltos + 1) / prev.totalPuzzles) * 100
+            }));
+          }
+        });
+
+        client.on('integrity_check_complete', (msg) => {
+          console.log('Verificación de integridad:', msg);
+          alert(`Integridad verificada: ${msg.passed ? '✅ PASÓ' : '❌ FALLÓ'}`);
+        });
+
+        client.on('export_ready', (msg) => {
+          console.log('Exportación lista:', msg.format);
+          // Descargar archivo
+          const link = document.createElement('a');
+          link.href = `data:image/${msg.format};base64,${msg.data}`;
+          link.download = `arc-${msg.puzzle_id}.${msg.format}`;
+          link.click();
+        });
+
+        client.on('error', (data) => {
+          setCargando(false);
+          setCargandoPuzzles(false);
+          console.error('❌ ERROR:', data.message);
+          if (data.traceback) {
+            console.error('Traceback:', data.traceback);
+          }
+          alert(`Error: ${data.message}`);
+        });
+        
+        console.log('✅ Todos los handlers registrados');
+        
+      } catch (error) {
+        console.error('Error configurando WebSocket:', error);
+        setConectado(false);
       }
     };
-  }, []);
+    
+    // Llamar a la función async
+    setupWebSocket();
 
-  const conectar = async () => {
-    try {
-      await wsClient.current.connect();
-      console.log('✅ Conectado al backend Python');
-    } catch (error) {
-      console.error('Error conectando:', error);
-      setConectado(false);
-    }
-  };
+    // No desconectar al desmontar ya que usamos singleton
+    return () => {
+      // El servicio singleton mantiene la conexión
+      console.log('Componente desmontado, conexión mantenida por singleton');
+    };
+  }, []);
 
   const cargarPuzzles = () => {
     if (!wsClient.current.isConnected()) {

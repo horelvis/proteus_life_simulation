@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import styled from 'styled-components';
 import AppBackend from './AppBackend';
 import AppAC from './AppAC';
+import AppARCReal from './AppARCReal';
 import ARCSolvingProcess from './components/ARCSolvingProcess';
 import ARCProcessAnimation from './components/ARCProcessAnimation';
 import ARCTopologicalView from './components/ARCTopologicalView';
@@ -36,15 +37,23 @@ const ModeButton = styled.button`
 `;
 
 function App() {
-  const [mode, setMode] = useState('backend'); // Ahora inicia en modo backend
+  const [mode, setMode] = useState('real'); // Ahora inicia en modo REAL
 
   return (
     <>
+      {mode === 'real' && <AppARCReal />}
       {mode === 'backend' && <AppBackend />}
       {mode === 'ac' && <AppAC />}
       {mode === 'solving' && <ARCSolvingProcess />}
       {mode === 'topological' && <ARCTopologicalView />}
       <ModeSelector>
+        <ModeButton 
+          $active={mode === 'real'} 
+          onClick={() => setMode('real')}
+          style={{ backgroundColor: mode === 'real' ? '#ff3333' : 'transparent' }}
+        >
+          🔬 ARC Real (Sin Simulación)
+        </ModeButton>
         <ModeButton 
           $active={mode === 'backend'} 
           onClick={() => setMode('backend')}
